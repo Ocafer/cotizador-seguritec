@@ -1,0 +1,9 @@
+{
+  "name": "Cotizador Seguritec",
+  "short_name": "Seguritec",
+  "start_url": "/nueva",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#111111",
+  "icons": []
+}

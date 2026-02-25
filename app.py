@@ -15,6 +15,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.staticfiles import StaticFiles
+import secrets
+
 
 # =========================
 # Config
@@ -27,11 +31,32 @@ IVA_RATE = 0.13  # 13%
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 DB_PATH = os.path.join(BASE_DIR, "app.db")
 EXCEL_PATH = os.path.join(DATA_DIR, "precios.xlsx")
 
+ADMIN_USER = os.environ.get("ADMIN_USER", "seguritec")
+ADMIN_PASS = os.environ.get("ADMIN_PASS", "cambia_esto")
+SESSION_SECRET = os.environ.get("SESSION_SECRET", secrets.token_urlsafe(32))
+
 app = FastAPI(title=APP_TITLE)
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
+if os.path.isdir(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# =========================
+# Auth helpers
+# =========================
+def is_logged_in(request: Request) -> bool:
+    return bool(request.session.get("auth"))
+
+def require_login(request: Request):
+    if not is_logged_in(request):
+        return RedirectResponse(url="/login", status_code=303)
+    return None
 
 
 # =========================
@@ -105,16 +130,13 @@ class Product:
     unidad: str
     precio_bs: float
 
-
 def _norm_header(x) -> str:
     return str(x).strip().lower() if x is not None else ""
-
 
 def _to_float(x, default: float = 0.0) -> float:
     try:
         if x is None:
             return default
-        # openpyxl can return numeric or string
         return float(x)
     except Exception:
         s = str(x).strip().replace(",", ".")
@@ -122,7 +144,6 @@ def _to_float(x, default: float = 0.0) -> float:
             return float(s)
         except Exception:
             return default
-
 
 def _to_int(x, default: int = 0) -> int:
     try:
@@ -132,12 +153,7 @@ def _to_int(x, default: int = 0) -> int:
     except Exception:
         return default
 
-
 def load_products() -> List[Product]:
-    """
-    Lee data/precios.xlsx, hoja 'productos' con columnas:
-    sku, categoria, nombre, unidad, precio_bs, activo
-    """
     if not os.path.exists(EXCEL_PATH):
         return []
 
@@ -147,7 +163,6 @@ def load_products() -> List[Product]:
 
     ws = wb["productos"]
 
-    # Read header row (row 1)
     headers = {}
     for col_idx, cell in enumerate(ws[1], start=1):
         h = _norm_header(cell.value)
@@ -160,8 +175,6 @@ def load_products() -> List[Product]:
         raise ValueError(f"Faltan columnas en Excel: {', '.join(sorted(missing))}")
 
     products: List[Product] = []
-
-    # Iterate rows from 2..max_row
     for r in range(2, ws.max_row + 1):
         activo = _to_int(ws.cell(r, headers["activo"]).value, default=0)
         if activo != 1:
@@ -173,17 +186,10 @@ def load_products() -> List[Product]:
         unidad = str(ws.cell(r, headers["unidad"]).value or "").strip() or "unidad"
         precio_bs = _to_float(ws.cell(r, headers["precio_bs"]).value, default=0.0)
 
-        # Skip empty lines
         if not nombre and not sku:
             continue
 
-        products.append(Product(
-            sku=sku,
-            categoria=categoria,
-            nombre=nombre,
-            unidad=unidad,
-            precio_bs=precio_bs,
-        ))
+        products.append(Product(sku=sku, categoria=categoria, nombre=nombre, unidad=unidad, precio_bs=precio_bs))
 
     products.sort(key=lambda p: (p.categoria.lower(), p.nombre.lower()))
     return products
@@ -193,9 +199,7 @@ def load_products() -> List[Product]:
 # PDF generator
 # =========================
 def money(x: float) -> str:
-    # Bs 1.234,56 (formato común)
     return f"Bs {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
 
 def generate_pdf(
     quote_no: int,
@@ -213,7 +217,6 @@ def generate_pdf(
     x0 = 18 * mm
     y = height - 18 * mm
 
-    # Header
     c.setFont("Helvetica-Bold", 14)
     c.drawString(x0, y, EMPRESA_NOMBRE)
     c.setFont("Helvetica", 10)
@@ -236,7 +239,6 @@ def generate_pdf(
     c.drawString(x0, y, f"Validez de la propuesta: {validity_days} día(s)")
     y -= 10 * mm
 
-    # Table header
     c.setFont("Helvetica-Bold", 10)
     c.drawString(x0, y, "Ítem")
     c.drawString(x0 + 90 * mm, y, "Cant.")
@@ -269,7 +271,6 @@ def generate_pdf(
             y = height - 18 * mm
             c.setFont("Helvetica", 10)
 
-    # Totals
     y -= 2 * mm
     c.line(x0, y, width - x0, y)
     y -= 8 * mm
@@ -303,37 +304,57 @@ def generate_pdf(
 
     c.setFont("Helvetica", 8)
     c.drawString(x0, 12 * mm, f"{EMPRESA_NOMBRE} - Cotización generada automáticamente")
-
     c.showPage()
     c.save()
     return buf.getvalue()
 
 
 # =========================
+# Auth routes
+# =========================
+@app.get("/login", response_class=HTMLResponse)
+def login_get(request: Request):
+    if is_logged_in(request):
+        return RedirectResponse(url="/nueva", status_code=303)
+    return templates.TemplateResponse("login.html", {"request": request, "err": request.query_params.get("err")})
+
+@app.post("/login")
+def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
+    if username == ADMIN_USER and password == ADMIN_PASS:
+        request.session["auth"] = True
+        return RedirectResponse(url="/nueva", status_code=303)
+    return RedirectResponse(url="/login?err=Usuario+o+clave+incorrecta", status_code=303)
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=303)
+
+
+# =========================
 # Routes
 # =========================
 @app.get("/", response_class=HTMLResponse)
-def home():
+def home(request: Request):
+    if not is_logged_in(request):
+        return RedirectResponse(url="/login", status_code=303)
     return RedirectResponse(url="/nueva", status_code=303)
 
 
 @app.get("/nueva", response_class=HTMLResponse)
 def nueva(request: Request):
+    gate = require_login(request)
+    if gate: return gate
     products = load_products()
     return templates.TemplateResponse(
         "nueva.html",
-        {
-            "request": request,
-            "products": products,
-            "empresa": EMPRESA_NOMBRE,
-            "telf": EMPRESA_TELF,
-            "iva_rate": IVA_RATE,
-        },
+        {"request": request, "products": products, "empresa": EMPRESA_NOMBRE, "telf": EMPRESA_TELF, "iva_rate": IVA_RATE},
     )
 
 
 @app.post("/crear")
 def crear_cotizacion(
+    request: Request,
     client_name: str = Form(...),
     delivery_time: str = Form(...),
     validity_days: int = Form(...),
@@ -344,6 +365,9 @@ def crear_cotizacion(
     item_qty: List[float] = Form([]),
     item_unit_price: List[float] = Form([]),
 ):
+    gate = require_login(request)
+    if gate: return gate
+
     items = []
     for i in range(len(item_name)):
         name = (item_name[i] or "").strip()
@@ -389,16 +413,22 @@ def crear_cotizacion(
 
 @app.get("/historial", response_class=HTMLResponse)
 def historial(request: Request):
+    gate = require_login(request)
+    if gate: return gate
+
     con = db()
     cur = con.cursor()
-    cur.execute("SELECT * FROM quotes ORDER BY id DESC LIMIT 200")
+    cur.execute("SELECT * FROM quotes ORDER BY id DESC LIMIT 500")
     rows = cur.fetchall()
     con.close()
-    return templates.TemplateResponse("historial.html", {"request": request, "quotes": rows})
+    return templates.TemplateResponse("historial.html", {"request": request, "quotes": rows, "empresa": EMPRESA_NOMBRE})
 
 
 @app.get("/cotizacion/{quote_id}/pdf")
-def cotizacion_pdf(quote_id: int):
+def cotizacion_pdf(request: Request, quote_id: int):
+    gate = require_login(request)
+    if gate: return gate
+
     con = db()
     cur = con.cursor()
     cur.execute("SELECT * FROM quotes WHERE id=?", (quote_id,))
@@ -422,8 +452,103 @@ def cotizacion_pdf(quote_id: int):
     )
 
     filename = f"cotizacion_{int(q['quote_no']):06d}.pdf"
-    return StreamingResponse(
-        io.BytesIO(pdf),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
-    )
+    return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf",
+                             headers={"Content-Disposition": f'inline; filename="{filename}"'})
+
+
+@app.get("/cotizacion/{quote_id}/editar", response_class=HTMLResponse)
+def editar_get(request: Request, quote_id: int):
+    gate = require_login(request)
+    if gate: return gate
+
+    con = db()
+    cur = con.cursor()
+    cur.execute("SELECT * FROM quotes WHERE id=?", (quote_id,))
+    q = cur.fetchone()
+    cur.execute("SELECT * FROM quote_items WHERE quote_id=? ORDER BY id", (quote_id,))
+    items = cur.fetchall()
+    con.close()
+
+    if not q:
+        return RedirectResponse(url="/historial", status_code=303)
+
+    return templates.TemplateResponse("editar.html", {
+        "request": request,
+        "q": q,
+        "items": items,
+        "products": load_products(),
+        "empresa": EMPRESA_NOMBRE,
+        "telf": EMPRESA_TELF,
+        "iva_rate": IVA_RATE,
+    })
+
+
+@app.post("/cotizacion/{quote_id}/editar")
+def editar_post(
+    request: Request,
+    quote_id: int,
+    client_name: str = Form(...),
+    delivery_time: str = Form(...),
+    validity_days: int = Form(...),
+    notes: str = Form(""),
+    item_sku: List[str] = Form([]),
+    item_name: List[str] = Form([]),
+    item_unit: List[str] = Form([]),
+    item_qty: List[float] = Form([]),
+    item_unit_price: List[float] = Form([]),
+):
+    gate = require_login(request)
+    if gate: return gate
+
+    items = []
+    for i in range(len(item_name)):
+        name = (item_name[i] or "").strip()
+        if not name:
+            continue
+        qty = float(item_qty[i] or 0)
+        price = float(item_unit_price[i] or 0)
+        if qty <= 0:
+            continue
+        items.append({
+            "sku": (item_sku[i] or "").strip(),
+            "name": name,
+            "unit": (item_unit[i] or "unidad").strip(),
+            "qty": qty,
+            "unit_price": price,
+        })
+
+    if not items:
+        return RedirectResponse(url=f"/cotizacion/{quote_id}/editar?err=Agrega+al+menos+un+item", status_code=303)
+
+    con = db()
+    cur = con.cursor()
+    cur.execute("""
+        UPDATE quotes
+        SET client_name=?, delivery_time=?, validity_days=?, notes=?
+        WHERE id=?
+    """, (client_name.strip(), delivery_time.strip(), int(validity_days), notes.strip() or None, quote_id))
+
+    cur.execute("DELETE FROM quote_items WHERE quote_id=?", (quote_id,))
+    for it in items:
+        cur.execute(
+            "INSERT INTO quote_items(quote_id, sku, name, unit, qty, unit_price) VALUES(?,?,?,?,?,?)",
+            (quote_id, it["sku"], it["name"], it["unit"], it["qty"], it["unit_price"]),
+        )
+
+    con.commit()
+    con.close()
+    return RedirectResponse(url="/historial", status_code=303)
+
+
+@app.post("/cotizacion/{quote_id}/borrar")
+def borrar(request: Request, quote_id: int):
+    gate = require_login(request)
+    if gate: return gate
+
+    con = db()
+    cur = con.cursor()
+    cur.execute("DELETE FROM quote_items WHERE quote_id=?", (quote_id,))
+    cur.execute("DELETE FROM quotes WHERE id=?", (quote_id,))
+    con.commit()
+    con.close()
+    return RedirectResponse(url="/historial", status_code=303)
