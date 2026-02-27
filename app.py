@@ -3,10 +3,9 @@ from __future__ import annotations
 import io
 import os
 import sqlite3
-import secrets
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Any, Dict, Tuple
+from typing import List, Optional, Any, Iterable, Dict
 
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -18,10 +17,11 @@ from reportlab.pdfgen import canvas
 
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
+import secrets
 
-# PostgreSQL (solo se usa si existe DATABASE_URL)
-import psycopg2
-import psycopg2.extras
+# PostgreSQL driver (psycopg v3)
+import psycopg
+from psycopg.rows import dict_row
 
 
 # =========================
@@ -36,15 +36,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-
-DB_PATH = os.path.join(BASE_DIR, "app.db")               # SQLite local
+DB_PATH = os.path.join(BASE_DIR, "app.db")
 EXCEL_PATH = os.path.join(DATA_DIR, "precios.xlsx")
-
-DATABASE_URL = os.environ.get("DATABASE_URL")            # PostgreSQL en Render
 
 ADMIN_USER = os.environ.get("ADMIN_USER", "seguritec")
 ADMIN_PASS = os.environ.get("ADMIN_PASS", "cambia_esto")
 SESSION_SECRET = os.environ.get("SESSION_SECRET", secrets.token_urlsafe(32))
+
+# Render: pon aquí tu env var DATABASE_URL en Render (ya la tienes)
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 app = FastAPI(title=APP_TITLE)
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -60,7 +60,6 @@ if os.path.isdir(STATIC_DIR):
 def is_logged_in(request: Request) -> bool:
     return bool(request.session.get("auth"))
 
-
 def require_login(request: Request):
     if not is_logged_in(request):
         return RedirectResponse(url="/login", status_code=303)
@@ -68,112 +67,77 @@ def require_login(request: Request):
 
 
 # =========================
-# DB helpers (SQLite o PostgreSQL)
+# DB helpers (SQLite local / Postgres Render)
 # =========================
-def _using_postgres() -> bool:
+def using_postgres() -> bool:
     return bool(DATABASE_URL)
-
 
 def db_connect():
     """
-    Devuelve (con, engine) donde engine es 'postgres' o 'sqlite'
+    Returns a connection object.
+    - PostgreSQL if DATABASE_URL is set (Render)
+    - SQLite otherwise (local)
     """
-    if _using_postgres():
-        # Render internal DB URL normalmente funciona sin SSL, pero "require" también suele funcionar.
-        # Si algún día falla por SSL, cambia PGSSLMODE a 'disable' en Render.
-        sslmode = os.environ.get("PGSSLMODE", "require")
-        con = psycopg2.connect(DATABASE_URL)
-        return con, "postgres"
+    if using_postgres():
+        # Render Postgres: normalmente requiere SSL.
+        # Si tu URL ya trae ?sslmode=require, ok. Si no, lo forzamos.
+        # psycopg entiende "sslmode=require" en el conninfo.
+        conninfo = DATABASE_URL
+        if "sslmode=" not in conninfo:
+            sep = "&" if "?" in conninfo else "?"
+            conninfo = conninfo + f"{sep}sslmode=require"
+
+        con = psycopg.connect(conninfo, row_factory=dict_row)
+        return con
     else:
         con = sqlite3.connect(DB_PATH)
         con.row_factory = sqlite3.Row
-        return con, "sqlite"
-
-
-def db_execute(sql: str, params: Tuple[Any, ...] = ()) -> None:
-    con, engine = db_connect()
-    cur = con.cursor()
-    cur.execute(sql, params)
-    con.commit()
-    con.close()
-
-
-def db_fetchone(sql: str, params: Tuple[Any, ...] = ()) -> Optional[Dict[str, Any]]:
-    con, engine = db_connect()
-    if engine == "postgres":
-        cur = con.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(sql, params)
-        row = cur.fetchone()
-        con.close()
-        return dict(row) if row else None
-    else:
-        cur = con.cursor()
-        cur.execute(sql, params)
-        row = cur.fetchone()
-        con.close()
-        return dict(row) if row else None
-
-
-def db_fetchall(sql: str, params: Tuple[Any, ...] = ()) -> List[Dict[str, Any]]:
-    con, engine = db_connect()
-    if engine == "postgres":
-        cur = con.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(sql, params)
-        rows = cur.fetchall()
-        con.close()
-        return [dict(r) for r in rows]
-    else:
-        cur = con.cursor()
-        cur.execute(sql, params)
-        rows = cur.fetchall()
-        con.close()
-        return [dict(r) for r in rows]
-
+        return con
 
 def init_db() -> None:
-    con, engine = db_connect()
-    cur = con.cursor()
-
-    if engine == "postgres":
-        # Tipos PostgreSQL
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS quotes (
-                id SERIAL PRIMARY KEY,
-                quote_no INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
-                client_name TEXT NOT NULL,
-                delivery_time TEXT NOT NULL,
-                validity_days INTEGER NOT NULL,
-                notes TEXT
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS quote_items (
-                id SERIAL PRIMARY KEY,
-                quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
-                sku TEXT,
-                name TEXT NOT NULL,
-                unit TEXT NOT NULL,
-                qty DOUBLE PRECISION NOT NULL,
-                unit_price DOUBLE PRECISION NOT NULL
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS counter (
-                counter_key TEXT PRIMARY KEY,
-                value INTEGER NOT NULL
-            )
-        """)
-        cur.execute("""
-            INSERT INTO counter(counter_key, value)
-            VALUES ('quote_no', 0)
-            ON CONFLICT (counter_key) DO NOTHING
-        """)
-        con.commit()
-        con.close()
-
+    if using_postgres():
+        con = db_connect()
+        try:
+            with con.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS quotes (
+                        id SERIAL PRIMARY KEY,
+                        quote_no INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        client_name TEXT NOT NULL,
+                        delivery_time TEXT NOT NULL,
+                        validity_days INTEGER NOT NULL,
+                        notes TEXT
+                    )
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS quote_items (
+                        id SERIAL PRIMARY KEY,
+                        quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+                        sku TEXT,
+                        name TEXT NOT NULL,
+                        unit TEXT NOT NULL,
+                        qty DOUBLE PRECISION NOT NULL,
+                        unit_price DOUBLE PRECISION NOT NULL
+                    )
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS counter (
+                        key TEXT PRIMARY KEY,
+                        value INTEGER NOT NULL
+                    )
+                """)
+                cur.execute("""
+                    INSERT INTO counter(key, value)
+                    VALUES ('quote_no', 0)
+                    ON CONFLICT (key) DO NOTHING
+                """)
+            con.commit()
+        finally:
+            con.close()
     else:
-        # Tipos SQLite
+        con = db_connect()
+        cur = con.cursor()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS quotes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,40 +163,35 @@ def init_db() -> None:
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS counter (
-                counter_key TEXT PRIMARY KEY,
+                key TEXT PRIMARY KEY,
                 value INTEGER NOT NULL
             )
         """)
-        cur.execute("INSERT OR IGNORE INTO counter(counter_key, value) VALUES('quote_no', 0)")
+        cur.execute("INSERT OR IGNORE INTO counter(key, value) VALUES('quote_no', 0)")
         con.commit()
         con.close()
-
 
 def next_quote_no() -> int:
-    con, engine = db_connect()
-    cur = con.cursor()
-
-    if engine == "postgres":
-        cur.execute("""
-            UPDATE counter
-            SET value = value + 1
-            WHERE counter_key = 'quote_no'
-            RETURNING value
-        """)
-        n = cur.fetchone()[0]
-        con.commit()
-        con.close()
-        return int(n)
+    if using_postgres():
+        con = db_connect()
+        try:
+            with con.cursor() as cur:
+                cur.execute("UPDATE counter SET value = value + 1 WHERE key = %s RETURNING value", ("quote_no",))
+                row = cur.fetchone()
+            con.commit()
+            return int(row["value"])
+        finally:
+            con.close()
     else:
-        cur.execute("UPDATE counter SET value = value + 1 WHERE counter_key='quote_no'")
-        cur.execute("SELECT value FROM counter WHERE counter_key='quote_no'")
+        con = db_connect()
+        cur = con.cursor()
+        cur.execute("UPDATE counter SET value = value + 1 WHERE key='quote_no'")
+        cur.execute("SELECT value FROM counter WHERE key='quote_no'")
         n = cur.fetchone()[0]
         con.commit()
         con.close()
         return int(n)
 
-
-# Inicializa tablas al arrancar
 init_db()
 
 
@@ -247,10 +206,8 @@ class Product:
     unidad: str
     precio_bs: float
 
-
 def _norm_header(x) -> str:
     return str(x).strip().lower() if x is not None else ""
-
 
 def _to_float(x, default: float = 0.0) -> float:
     try:
@@ -264,7 +221,6 @@ def _to_float(x, default: float = 0.0) -> float:
         except Exception:
             return default
 
-
 def _to_int(x, default: int = 0) -> int:
     try:
         if x is None:
@@ -272,7 +228,6 @@ def _to_int(x, default: int = 0) -> int:
         return int(float(x))
     except Exception:
         return default
-
 
 def load_products() -> List[Product]:
     if not os.path.exists(EXCEL_PATH):
@@ -321,7 +276,6 @@ def load_products() -> List[Product]:
 # =========================
 def money(x: float) -> str:
     return f"Bs {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
 
 def generate_pdf(
     quote_no: int,
@@ -440,15 +394,12 @@ def login_get(request: Request):
         return RedirectResponse(url="/nueva", status_code=303)
     return templates.TemplateResponse("login.html", {"request": request, "err": request.query_params.get("err")})
 
-
 @app.post("/login")
 def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
-    # strip para evitar espacios al copiar/pegar
-    if username.strip() == ADMIN_USER.strip() and password.strip() == ADMIN_PASS.strip():
+    if username == ADMIN_USER and password == ADMIN_PASS:
         request.session["auth"] = True
         return RedirectResponse(url="/nueva", status_code=303)
     return RedirectResponse(url="/login?err=Usuario+o+clave+incorrecta", status_code=303)
-
 
 @app.get("/logout")
 def logout(request: Request):
@@ -518,41 +469,48 @@ def crear_cotizacion(
     qno = next_quote_no()
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    con, engine = db_connect()
-    cur = con.cursor()
+    if using_postgres():
+        con = db_connect()
+        try:
+            with con.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO quotes(quote_no, created_at, client_name, delivery_time, validity_days, notes)
+                    VALUES(%s,%s,%s,%s,%s,%s)
+                    RETURNING id
+                    """,
+                    (qno, created_at, client_name.strip(), delivery_time.strip(), int(validity_days), notes.strip() or None),
+                )
+                quote_id = cur.fetchone()["id"]
 
-    if engine == "postgres":
-        cur.execute(
-            "INSERT INTO quotes(quote_no, created_at, client_name, delivery_time, validity_days, notes) "
-            "VALUES(%s,%s,%s,%s,%s,%s) RETURNING id",
-            (qno, created_at, client_name.strip(), delivery_time.strip(), int(validity_days), notes.strip() or None),
-        )
-        quote_id = cur.fetchone()[0]
-
-        for it in items:
-            cur.execute(
-                "INSERT INTO quote_items(quote_id, sku, name, unit, qty, unit_price) "
-                "VALUES(%s,%s,%s,%s,%s,%s)",
-                (quote_id, it["sku"], it["name"], it["unit"], it["qty"], it["unit_price"]),
-            )
-
+                for it in items:
+                    cur.execute(
+                        """
+                        INSERT INTO quote_items(quote_id, sku, name, unit, qty, unit_price)
+                        VALUES(%s,%s,%s,%s,%s,%s)
+                        """,
+                        (quote_id, it["sku"], it["name"], it["unit"], it["qty"], it["unit_price"]),
+                    )
+            con.commit()
+        finally:
+            con.close()
     else:
+        con = db_connect()
+        cur = con.cursor()
         cur.execute(
-            "INSERT INTO quotes(quote_no, created_at, client_name, delivery_time, validity_days, notes) "
-            "VALUES(?,?,?,?,?,?)",
+            "INSERT INTO quotes(quote_no, created_at, client_name, delivery_time, validity_days, notes) VALUES(?,?,?,?,?,?)",
             (qno, created_at, client_name.strip(), delivery_time.strip(), int(validity_days), notes.strip() or None),
         )
         quote_id = cur.lastrowid
 
         for it in items:
             cur.execute(
-                "INSERT INTO quote_items(quote_id, sku, name, unit, qty, unit_price) "
-                "VALUES(?,?,?,?,?,?)",
+                "INSERT INTO quote_items(quote_id, sku, name, unit, qty, unit_price) VALUES(?,?,?,?,?,?)",
                 (quote_id, it["sku"], it["name"], it["unit"], it["qty"], it["unit_price"]),
             )
 
-    con.commit()
-    con.close()
+        con.commit()
+        con.close()
 
     return RedirectResponse(url=f"/cotizacion/{quote_id}/pdf", status_code=303)
 
@@ -563,8 +521,22 @@ def historial(request: Request):
     if gate:
         return gate
 
-    quotes = db_fetchall("SELECT * FROM quotes ORDER BY id DESC LIMIT 500")
-    return templates.TemplateResponse("historial.html", {"request": request, "quotes": quotes, "empresa": EMPRESA_NOMBRE})
+    if using_postgres():
+        con = db_connect()
+        try:
+            with con.cursor() as cur:
+                cur.execute("SELECT * FROM quotes ORDER BY id DESC LIMIT 500")
+                rows = cur.fetchall()
+        finally:
+            con.close()
+    else:
+        con = db_connect()
+        cur = con.cursor()
+        cur.execute("SELECT * FROM quotes ORDER BY id DESC LIMIT 500")
+        rows = cur.fetchall()
+        con.close()
+
+    return templates.TemplateResponse("historial.html", {"request": request, "quotes": rows, "empresa": EMPRESA_NOMBRE})
 
 
 @app.get("/cotizacion/{quote_id}/pdf")
@@ -573,14 +545,31 @@ def cotizacion_pdf(request: Request, quote_id: int):
     if gate:
         return gate
 
-    engine = "postgres" if _using_postgres() else "sqlite"
-    placeholder = "%s" if engine == "postgres" else "?"
+    if using_postgres():
+        con = db_connect()
+        try:
+            with con.cursor() as cur:
+                cur.execute("SELECT * FROM quotes WHERE id=%s", (quote_id,))
+                q = cur.fetchone()
+                if not q:
+                    return RedirectResponse(url="/historial", status_code=303)
 
-    q = db_fetchone(f"SELECT * FROM quotes WHERE id={placeholder}", (quote_id,))
-    if not q:
-        return RedirectResponse(url="/historial", status_code=303)
+                cur.execute("SELECT * FROM quote_items WHERE quote_id=%s ORDER BY id", (quote_id,))
+                items = [dict(r) for r in cur.fetchall()]
+        finally:
+            con.close()
+    else:
+        con = db_connect()
+        cur = con.cursor()
+        cur.execute("SELECT * FROM quotes WHERE id=?", (quote_id,))
+        q = cur.fetchone()
+        if not q:
+            con.close()
+            return RedirectResponse(url="/historial", status_code=303)
 
-    items = db_fetchall(f"SELECT * FROM quote_items WHERE quote_id={placeholder} ORDER BY id", (quote_id,))
+        cur.execute("SELECT * FROM quote_items WHERE quote_id=? ORDER BY id", (quote_id,))
+        items = [dict(r) for r in cur.fetchall()]
+        con.close()
 
     pdf = generate_pdf(
         quote_no=int(q["quote_no"]),
@@ -589,7 +578,7 @@ def cotizacion_pdf(request: Request, quote_id: int):
         delivery_time=str(q["delivery_time"]),
         validity_days=int(q["validity_days"]),
         items=items,
-        notes=q.get("notes"),
+        notes=q["notes"],
     )
 
     filename = f"cotizacion_{int(q['quote_no']):06d}.pdf"
@@ -606,14 +595,27 @@ def editar_get(request: Request, quote_id: int):
     if gate:
         return gate
 
-    engine = "postgres" if _using_postgres() else "sqlite"
-    placeholder = "%s" if engine == "postgres" else "?"
+    if using_postgres():
+        con = db_connect()
+        try:
+            with con.cursor() as cur:
+                cur.execute("SELECT * FROM quotes WHERE id=%s", (quote_id,))
+                q = cur.fetchone()
+                cur.execute("SELECT * FROM quote_items WHERE quote_id=%s ORDER BY id", (quote_id,))
+                items = cur.fetchall()
+        finally:
+            con.close()
+    else:
+        con = db_connect()
+        cur = con.cursor()
+        cur.execute("SELECT * FROM quotes WHERE id=?", (quote_id,))
+        q = cur.fetchone()
+        cur.execute("SELECT * FROM quote_items WHERE quote_id=? ORDER BY id", (quote_id,))
+        items = cur.fetchall()
+        con.close()
 
-    q = db_fetchone(f"SELECT * FROM quotes WHERE id={placeholder}", (quote_id,))
     if not q:
         return RedirectResponse(url="/historial", status_code=303)
-
-    items = db_fetchall(f"SELECT * FROM quote_items WHERE quote_id={placeholder} ORDER BY id", (quote_id,))
 
     return templates.TemplateResponse("editar.html", {
         "request": request,
@@ -664,36 +666,46 @@ def editar_post(
     if not items:
         return RedirectResponse(url=f"/cotizacion/{quote_id}/editar?err=Agrega+al+menos+un+item", status_code=303)
 
-    con, engine = db_connect()
-    cur = con.cursor()
+    if using_postgres():
+        con = db_connect()
+        try:
+            with con.cursor() as cur:
+                cur.execute("""
+                    UPDATE quotes
+                    SET client_name=%s, delivery_time=%s, validity_days=%s, notes=%s
+                    WHERE id=%s
+                """, (client_name.strip(), delivery_time.strip(), int(validity_days), notes.strip() or None, quote_id))
 
-    if engine == "postgres":
-        cur.execute(
-            "UPDATE quotes SET client_name=%s, delivery_time=%s, validity_days=%s, notes=%s WHERE id=%s",
-            (client_name.strip(), delivery_time.strip(), int(validity_days), notes.strip() or None, quote_id),
-        )
-        cur.execute("DELETE FROM quote_items WHERE quote_id=%s", (quote_id,))
-        for it in items:
-            cur.execute(
-                "INSERT INTO quote_items(quote_id, sku, name, unit, qty, unit_price) "
-                "VALUES(%s,%s,%s,%s,%s,%s)",
-                (quote_id, it["sku"], it["name"], it["unit"], it["qty"], it["unit_price"]),
-            )
+                cur.execute("DELETE FROM quote_items WHERE quote_id=%s", (quote_id,))
+                for it in items:
+                    cur.execute(
+                        """
+                        INSERT INTO quote_items(quote_id, sku, name, unit, qty, unit_price)
+                        VALUES(%s,%s,%s,%s,%s,%s)
+                        """,
+                        (quote_id, it["sku"], it["name"], it["unit"], it["qty"], it["unit_price"]),
+                    )
+            con.commit()
+        finally:
+            con.close()
     else:
-        cur.execute(
-            "UPDATE quotes SET client_name=?, delivery_time=?, validity_days=?, notes=? WHERE id=?",
-            (client_name.strip(), delivery_time.strip(), int(validity_days), notes.strip() or None, quote_id),
-        )
+        con = db_connect()
+        cur = con.cursor()
+        cur.execute("""
+            UPDATE quotes
+            SET client_name=?, delivery_time=?, validity_days=?, notes=?
+            WHERE id=?
+        """, (client_name.strip(), delivery_time.strip(), int(validity_days), notes.strip() or None, quote_id))
+
         cur.execute("DELETE FROM quote_items WHERE quote_id=?", (quote_id,))
         for it in items:
             cur.execute(
-                "INSERT INTO quote_items(quote_id, sku, name, unit, qty, unit_price) "
-                "VALUES(?,?,?,?,?,?)",
+                "INSERT INTO quote_items(quote_id, sku, name, unit, qty, unit_price) VALUES(?,?,?,?,?,?)",
                 (quote_id, it["sku"], it["name"], it["unit"], it["qty"], it["unit_price"]),
             )
+        con.commit()
+        con.close()
 
-    con.commit()
-    con.close()
     return RedirectResponse(url="/historial", status_code=303)
 
 
@@ -703,17 +715,22 @@ def borrar(request: Request, quote_id: int):
     if gate:
         return gate
 
-    con, engine = db_connect()
-    cur = con.cursor()
-
-    if engine == "postgres":
-        # ON DELETE CASCADE ya borra items, pero igual está bien explícito
-        cur.execute("DELETE FROM quote_items WHERE quote_id=%s", (quote_id,))
-        cur.execute("DELETE FROM quotes WHERE id=%s", (quote_id,))
+    if using_postgres():
+        con = db_connect()
+        try:
+            with con.cursor() as cur:
+                # ON DELETE CASCADE ya borra items, pero lo dejamos explícito por si acaso.
+                cur.execute("DELETE FROM quote_items WHERE quote_id=%s", (quote_id,))
+                cur.execute("DELETE FROM quotes WHERE id=%s", (quote_id,))
+            con.commit()
+        finally:
+            con.close()
     else:
+        con = db_connect()
+        cur = con.cursor()
         cur.execute("DELETE FROM quote_items WHERE quote_id=?", (quote_id,))
         cur.execute("DELETE FROM quotes WHERE id=?", (quote_id,))
+        con.commit()
+        con.close()
 
-    con.commit()
-    con.close()
     return RedirectResponse(url="/historial", status_code=303)
