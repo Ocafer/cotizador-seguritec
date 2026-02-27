@@ -82,7 +82,7 @@ def db_connect():
         # Render internal DB URL normalmente funciona sin SSL, pero "require" también suele funcionar.
         # Si algún día falla por SSL, cambia PGSSLMODE a 'disable' en Render.
         sslmode = os.environ.get("PGSSLMODE", "require")
-        con = psycopg2.connect(DATABASE_URL, sslmode=sslmode)
+        con = psycopg2.connect(DATABASE_URL)
         return con, "postgres"
     else:
         con = sqlite3.connect(DB_PATH)
