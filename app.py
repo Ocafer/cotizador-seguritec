@@ -327,12 +327,14 @@ def init_db() -> None:
         finally:
             con.close()
 
-def products_count() -> int:
-    if IS_POSTGRES:
-        row = db_fetchone("SELECT COUNT(*) FROM products")
-        return int(row[0]) if row else 0
-    row = db_fetchone("SELECT COUNT(*) FROM products")
-    return int(row[0]) if row else 0
+def products_count():
+    row = db_fetchone("SELECT COUNT(*) AS c FROM products")
+    if not row:
+        return 0
+    try:
+        return int(row["c"])  # Postgres (dict_row)
+    except Exception:
+        return int(row[0])    # SQLite (tupla/lista)
 
 def seed_products_from_excel_if_empty():
     if products_count() > 0:
