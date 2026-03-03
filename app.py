@@ -687,47 +687,71 @@ def cotizacion_pdf(request: Request, quote_id: int):
         q = db_fetchone("SELECT * FROM quotes WHERE id=%s", (quote_id,))
         if not q:
             return RedirectResponse(url="/historial", status_code=303)
-        items_rows = db_fetchall("SELECT sku,name,unit,qty,unit_price FROM quote_items WHERE quote_id=%s ORDER BY id", (quote_id,))
-        items = [{"sku": r[0], "name": r[1], "unit": r[2], "qty": r[3], "unit_price": r[4]} for r in items_rows]
 
-        created_at = q[2].strftime("%Y-%m-%d %H:%M") if hasattr(q[2], "strftime") else str(q[2])
-        pdf = generate_pdf(
-            quote_no=int(q[1]),
-            created_at=created_at,
-            client_name=str(q[3]),
-            delivery_time=str(q[4]),
-            validity_days=int(q[5]),
-            items=items,
-            notes=q[6],
+        items_rows = db_fetchall(
+            "SELECT sku, name, unit, qty, unit_price FROM quote_items WHERE quote_id=%s ORDER BY id",
+            (quote_id,),
         )
-        filename = f"cotizacion_{int(q[1]):06d}.pdf"
-    else:
-        con = db_connect()
-        try:
-            cur = con.cursor()
-            cur.execute("SELECT * FROM quotes WHERE id=?", (quote_id,))
-            q = cur.fetchone()
-            if not q:
-                return RedirectResponse(url="/historial", status_code=303)
 
-            cur.execute("SELECT * FROM quote_items WHERE quote_id=? ORDER BY id", (quote_id,))
-            items = [dict(r) for r in cur.fetchall()]
-        finally:
-            con.close()
+        items = []
+        for r in items_rows:
+            items.append({
+                "sku": (r["sku"] or ""),
+                "name": r["name"],
+                "unit": r["unit"],
+                "qty": float(r["qty"]),
+                "unit_price": float(r["unit_price"]),
+            })
+
+        created_at = q["created_at"].strftime("%Y-%m-%d %H:%M") if hasattr(q["created_at"], "strftime") else str(q["created_at"])
 
         pdf = generate_pdf(
             quote_no=int(q["quote_no"]),
-            created_at=str(q["created_at"]),
+            created_at=created_at,
             client_name=str(q["client_name"]),
             delivery_time=str(q["delivery_time"]),
             validity_days=int(q["validity_days"]),
             items=items,
             notes=q["notes"],
         )
-        filename = f"cotizacion_{int(q['quote_no']):06d}.pdf"
 
-    return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf",
-                             headers={"Content-Disposition": f'inline; filename="{filename}"'})
+        filename = f"cotizacion_{int(q['quote_no']):06d}.pdf"
+        return StreamingResponse(
+            io.BytesIO(pdf),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+
+    # --- SQLite (tu código actual) ---
+    con = db_connect()
+    try:
+        cur = con.cursor()
+        cur.execute("SELECT * FROM quotes WHERE id=?", (quote_id,))
+        q = cur.fetchone()
+        if not q:
+            return RedirectResponse(url="/historial", status_code=303)
+
+        cur.execute("SELECT * FROM quote_items WHERE quote_id=? ORDER BY id", (quote_id,))
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        con.close()
+
+    pdf = generate_pdf(
+        quote_no=int(q["quote_no"]),
+        created_at=str(q["created_at"]),
+        client_name=str(q["client_name"]),
+        delivery_time=str(q["delivery_time"]),
+        validity_days=int(q["validity_days"]),
+        items=items,
+        notes=q["notes"],
+    )
+
+    filename = f"cotizacion_{int(q['quote_no']):06d}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 @app.get("/cotizacion/{quote_id}/editar", response_class=HTMLResponse)
 def editar_get(request: Request, quote_id: int):
