@@ -328,13 +328,10 @@ def init_db() -> None:
             con.close()
 
 def products_count():
-    row = db_fetchone("SELECT COUNT(*) AS c FROM products")
+    row = db_fetchone("SELECT COUNT(*) AS total FROM products")
     if not row:
         return 0
-    try:
-        return int(row["c"])  # Postgres (dict_row)
-    except Exception:
-        return int(row[0])    # SQLite (tupla/lista)
+    return int(row["total"])
 
 def seed_products_from_excel_if_empty():
     if products_count() > 0:
@@ -403,7 +400,7 @@ def next_quote_no() -> int:
     if IS_POSTGRES:
         db_exec("UPDATE counter SET value = value + 1 WHERE key='quote_no'")
         row = db_fetchone("SELECT value FROM counter WHERE key='quote_no'")
-        return int(row[0])
+        return int(row["value"])
     else:
         con = db_connect()
         try:
