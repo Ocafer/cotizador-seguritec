@@ -327,11 +327,9 @@ def init_db() -> None:
         finally:
             con.close()
 
-def products_count():
+def products_count() -> int:
     row = db_fetchone("SELECT COUNT(*) AS total FROM products")
-    if not row:
-        return 0
-    return int(row["total"])
+    return int(row["total"]) if row else 0
 
 def seed_products_from_excel_if_empty():
     if products_count() > 0:
@@ -376,20 +374,28 @@ def seed_products_from_excel_if_empty():
             con.close()
 
 def load_products() -> List[Product]:
-    rows = db_fetchall("SELECT sku,categoria,nombre,unidad,precio_bs,activo FROM products WHERE activo=1 ORDER BY categoria, nombre")
-    out: List[Product] = []
+    rows = db_fetchall("""
+        SELECT sku, categoria, nombre, unidad, precio_bs, activo
+        FROM products
+        WHERE activo=1
+        ORDER BY categoria, nombre
+    """)
+
+    products: List[Product] = []
     for r in rows:
-        # sqlite Row / postgres tuple -> ambos indexables
-        sku = (r[0] or "") if r[0] is not None else ""
-        out.append(Product(
-            sku=str(sku),
-            categoria=str(r[1] or ""),
-            nombre=str(r[2] or ""),
-            unidad=str(r[3] or "unidad"),
-            precio_bs=float(r[4] or 0),
-            activo=int(r[5] or 1),
+        # En Postgres (dict_row): r["sku"]
+        # En SQLite (sqlite3.Row): r["sku"] también funciona
+        sku = (r["sku"] or "").strip() if r["sku"] is not None else ""
+        products.append(Product(
+            sku=sku,
+            categoria=str(r["categoria"] or ""),
+            nombre=str(r["nombre"] or ""),
+            unidad=str(r["unidad"] or "unidad"),
+            precio_bs=float(r["precio_bs"] or 0),
+            activo=int(r["activo"] or 1),
         ))
-    return out
+
+    return products
 
 
 init_db()
