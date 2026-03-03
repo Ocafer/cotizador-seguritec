@@ -1,5 +1,43 @@
-.env
-*.env
-1.txt
-*.db
+# =========================
+# Python
+# =========================
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pytest_cache/
+*.coverage
+htmlcov/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# =========================
+# Base de datos local
+# =========================
+*.db
+app.db
+
+# =========================
+# Variables de entorno
+# =========================
+.env
+
+# =========================
+# Archivos de sistema
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# Archivos temporales
+# =========================
+*.log
