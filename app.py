@@ -60,13 +60,14 @@ IS_POSTGRES = bool(DATABASE_URL)
 
 def _pg_connect():
     import psycopg
-    # Render Postgres suele requerir SSL
-    # Si tu URL ya tiene ?sslmode=require mejor; igual lo reforzamos.
+    from psycopg.rows import dict_row
+
     url = DATABASE_URL
     if url and "sslmode=" not in url:
         sep = "&" if "?" in url else "?"
         url = url + f"{sep}sslmode=require"
-    return psycopg.connect(url)
+
+    return psycopg.connect(url, row_factory=dict_row)
 
 def db_connect():
     """
