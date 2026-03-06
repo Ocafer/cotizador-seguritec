@@ -1016,3 +1016,266 @@ def productos_borrar(request: Request, producto_id: int):
         db_exec("DELETE FROM products WHERE id=?", (producto_id,))
 
     return RedirectResponse(url="/productos?msg=Producto+eliminado.&msg_type=warning", status_code=303)
+
+
+# =========================
+# Instalaciones / Agenda
+# =========================
+@dataclass
+class InstalacionRow:
+    id: int
+    quote_id: int
+    quote_no: int
+    client_name: str
+    fecha_instalacion: str
+    tecnico: str
+    estado: str
+    notas_instalacion: str
+    total_con_iva: float
+
+def init_instalaciones_table():
+    if IS_POSTGRES:
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS instalaciones (
+                id SERIAL PRIMARY KEY,
+                quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+                fecha_instalacion DATE NOT NULL,
+                tecnico TEXT NOT NULL,
+                estado TEXT NOT NULL DEFAULT 'pendiente',
+                notas_instalacion TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """)
+    else:
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS instalaciones (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_id INTEGER NOT NULL,
+                fecha_instalacion TEXT NOT NULL,
+                tecnico TEXT NOT NULL,
+                estado TEXT NOT NULL DEFAULT 'pendiente',
+                notas_instalacion TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (quote_id) REFERENCES quotes(id)
+            )
+        """)
+
+init_instalaciones_table()
+
+def get_quote_total(quote_id: int) -> float:
+    if IS_POSTGRES:
+        rows = db_fetchall("SELECT qty, unit_price FROM quote_items WHERE quote_id=%s", (quote_id,))
+    else:
+        rows = db_fetchall("SELECT qty, unit_price FROM quote_items WHERE quote_id=?", (quote_id,))
+    subtotal = sum(float(r["qty"]) * float(r["unit_price"]) for r in rows)
+    return subtotal * (1 + IVA_RATE)
+
+@app.get("/instalacion/{quote_id}/agendar", response_class=HTMLResponse)
+def agendar_get(request: Request, quote_id: int):
+    gate = require_login(request)
+    if gate:
+        return gate
+
+    if IS_POSTGRES:
+        q = db_fetchone("SELECT * FROM quotes WHERE id=%s", (quote_id,))
+        inst = db_fetchone("SELECT * FROM instalaciones WHERE quote_id=%s", (quote_id,))
+    else:
+        q = db_fetchone("SELECT * FROM quotes WHERE id=?", (quote_id,))
+        inst = db_fetchone("SELECT * FROM instalaciones WHERE quote_id=?", (quote_id,))
+
+    if not q:
+        return RedirectResponse(url="/historial", status_code=303)
+
+    return templates.TemplateResponse("agendar.html", {
+        "request": request,
+        "q": q,
+        "instalacion": inst,
+        "empresa": EMPRESA_NOMBRE,
+    })
+
+@app.post("/instalacion/{quote_id}/guardar")
+def agendar_post(
+    request: Request,
+    quote_id: int,
+    fecha_instalacion: str = Form(...),
+    tecnico: str = Form(...),
+    estado: str = Form("pendiente"),
+    notas_instalacion: str = Form(""),
+):
+    gate = require_login(request)
+    if gate:
+        return gate
+
+    if IS_POSTGRES:
+        existing = db_fetchone("SELECT id FROM instalaciones WHERE quote_id=%s", (quote_id,))
+        if existing:
+            db_exec(
+                "UPDATE instalaciones SET fecha_instalacion=%s, tecnico=%s, estado=%s, notas_instalacion=%s WHERE quote_id=%s",
+                (fecha_instalacion, tecnico.strip(), estado, notas_instalacion.strip() or None, quote_id),
+            )
+        else:
+            db_exec(
+                "INSERT INTO instalaciones(quote_id, fecha_instalacion, tecnico, estado, notas_instalacion) VALUES(%s,%s,%s,%s,%s)",
+                (quote_id, fecha_instalacion, tecnico.strip(), estado, notas_instalacion.strip() or None),
+            )
+    else:
+        existing = db_fetchone("SELECT id FROM instalaciones WHERE quote_id=?", (quote_id,))
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if existing:
+            db_exec(
+                "UPDATE instalaciones SET fecha_instalacion=?, tecnico=?, estado=?, notas_instalacion=? WHERE quote_id=?",
+                (fecha_instalacion, tecnico.strip(), estado, notas_instalacion.strip() or None, quote_id),
+            )
+        else:
+            db_exec(
+                "INSERT INTO instalaciones(quote_id, fecha_instalacion, tecnico, estado, notas_instalacion, created_at) VALUES(?,?,?,?,?,?)",
+                (quote_id, fecha_instalacion, tecnico.strip(), estado, notas_instalacion.strip() or None, now),
+            )
+
+    return RedirectResponse(url="/agenda", status_code=303)
+
+@app.get("/agenda", response_class=HTMLResponse)
+def agenda(request: Request, fecha: str = ""):
+    gate = require_login(request)
+    if gate:
+        return gate
+
+    fecha_sel = fecha or datetime.now().strftime("%Y-%m-%d")
+
+    if IS_POSTGRES:
+        rows_dia = db_fetchall("""
+            SELECT i.quote_id, i.fecha_instalacion, i.tecnico, i.estado, i.notas_instalacion,
+                   q.quote_no, q.client_name
+            FROM instalaciones i
+            JOIN quotes q ON q.id = i.quote_id
+            WHERE i.fecha_instalacion = %s
+            ORDER BY i.tecnico
+        """, (fecha_sel,))
+        rows_proximas = db_fetchall("""
+            SELECT i.quote_id, i.fecha_instalacion, i.tecnico, i.estado,
+                   q.quote_no, q.client_name
+            FROM instalaciones i
+            JOIN quotes q ON q.id = i.quote_id
+            WHERE i.fecha_instalacion > %s AND i.estado != 'completada'
+            ORDER BY i.fecha_instalacion
+            LIMIT 20
+        """, (fecha_sel,))
+    else:
+        rows_dia = db_fetchall("""
+            SELECT i.quote_id, i.fecha_instalacion, i.tecnico, i.estado, i.notas_instalacion,
+                   q.quote_no, q.client_name
+            FROM instalaciones i
+            JOIN quotes q ON q.id = i.quote_id
+            WHERE i.fecha_instalacion = ?
+            ORDER BY i.tecnico
+        """, (fecha_sel,))
+        rows_proximas = db_fetchall("""
+            SELECT i.quote_id, i.fecha_instalacion, i.tecnico, i.estado,
+                   q.quote_no, q.client_name
+            FROM instalaciones i
+            JOIN quotes q ON q.id = i.quote_id
+            WHERE i.fecha_instalacion > ? AND i.estado != 'completada'
+            ORDER BY i.fecha_instalacion
+            LIMIT 20
+        """, (fecha_sel,))
+
+    def enrich(rows):
+        result = []
+        for r in rows:
+            total = get_quote_total(int(r["quote_id"]))
+            result.append({
+                "quote_id": r["quote_id"],
+                "quote_no": r["quote_no"],
+                "client_name": r["client_name"],
+                "fecha_instalacion": str(r["fecha_instalacion"]),
+                "tecnico": r["tecnico"],
+                "estado": r["estado"],
+                "notas_instalacion": r.get("notas_instalacion", ""),
+                "total_con_iva": total,
+            })
+        return result
+
+    instalaciones_dia = enrich(rows_dia)
+    proximas = enrich(rows_proximas)
+
+    return templates.TemplateResponse("agenda.html", {
+        "request": request,
+        "empresa": EMPRESA_NOMBRE,
+        "fecha_sel": fecha_sel,
+        "instalaciones_dia": instalaciones_dia,
+        "proximas": proximas,
+        "total_dia": len(instalaciones_dia),
+    })
+
+@app.get("/reportes", response_class=HTMLResponse)
+def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = ""):
+    gate = require_login(request)
+    if gate:
+        return gate
+
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    desde = desde or datetime.now().strftime("%Y-%m-01")
+    hasta = hasta or hoy
+
+    if IS_POSTGRES:
+        rows = db_fetchall("""
+            SELECT i.quote_id, i.fecha_instalacion, i.tecnico, i.estado,
+                   q.quote_no, q.client_name
+            FROM instalaciones i
+            JOIN quotes q ON q.id = i.quote_id
+            WHERE i.fecha_instalacion BETWEEN %s AND %s
+            ORDER BY i.fecha_instalacion
+        """, (desde, hasta))
+        tecnicos_rows = db_fetchall("SELECT DISTINCT tecnico FROM instalaciones ORDER BY tecnico")
+    else:
+        rows = db_fetchall("""
+            SELECT i.quote_id, i.fecha_instalacion, i.tecnico, i.estado,
+                   q.quote_no, q.client_name
+            FROM instalaciones i
+            JOIN quotes q ON q.id = i.quote_id
+            WHERE i.fecha_instalacion BETWEEN ? AND ?
+            ORDER BY i.fecha_instalacion
+        """, (desde, hasta))
+        tecnicos_rows = db_fetchall("SELECT DISTINCT tecnico FROM instalaciones ORDER BY tecnico")
+
+    tecnicos = [r["tecnico"] for r in tecnicos_rows]
+
+    instalaciones = []
+    for r in rows:
+        if tecnico and r["tecnico"] != tecnico:
+            continue
+        total = get_quote_total(int(r["quote_id"]))
+        instalaciones.append({
+            "quote_id": r["quote_id"],
+            "quote_no": r["quote_no"],
+            "client_name": r["client_name"],
+            "fecha_instalacion": str(r["fecha_instalacion"]),
+            "tecnico": r["tecnico"],
+            "estado": r["estado"],
+            "total_con_iva": total,
+        })
+
+    total_con_iva = sum(i["total_con_iva"] for i in instalaciones)
+    total_sin_iva = total_con_iva / (1 + IVA_RATE)
+    total_iva = total_con_iva - total_sin_iva
+
+    stats = {
+        "total": len(instalaciones),
+        "pendientes": sum(1 for i in instalaciones if i["estado"] == "pendiente"),
+        "en_curso": sum(1 for i in instalaciones if i["estado"] == "en_curso"),
+        "completadas": sum(1 for i in instalaciones if i["estado"] == "completada"),
+        "total_sin_iva": total_sin_iva,
+        "total_iva": total_iva,
+        "total_con_iva": total_con_iva,
+    }
+
+    return templates.TemplateResponse("reportes.html", {
+        "request": request,
+        "empresa": EMPRESA_NOMBRE,
+        "desde": desde,
+        "hasta": hasta,
+        "tecnico_filtro": tecnico,
+        "tecnicos": tecnicos,
+        "instalaciones": instalaciones,
+        "stats": stats,
+    })

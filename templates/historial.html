@@ -22,6 +22,8 @@
         <a class="btn btn-outline-secondary btn-sm" href="/nueva">Inicio</a>
         <a class="btn btn-primary btn-sm" href="/nueva">Nueva</a>
         <a class="btn btn-outline-primary btn-sm" href="/productos">Productos</a>
+        <a class="btn btn-outline-success btn-sm" href="/agenda">Agenda</a>
+        <a class="btn btn-outline-info btn-sm" href="/reportes">Reportes</a>
         <a class="btn btn-outline-danger btn-sm" href="/logout">Salir</a>
       </div>
     </div>
@@ -49,6 +51,7 @@
                 <td>{{ q["validity_days"] }} día(s)</td>
                 <td class="text-end">
                   <a class="btn btn-sm btn-outline-secondary" href="/cotizacion/{{ q['id'] }}/pdf" target="_blank">PDF</a>
+                  <a class="btn btn-sm btn-outline-success" href="/instalacion/{{ q['id'] }}/agendar">Agendar</a>
                   <a class="btn btn-sm btn-outline-primary" href="/cotizacion/{{ q['id'] }}/editar">Editar</a>
                   <form method="post" action="/cotizacion/{{ q['id'] }}/borrar" style="display:inline"
                         onsubmit="return confirm('¿Seguro que deseas borrar esta cotización?');">

@@ -1,0 +1,178 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reportes</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { padding: 14px; }
+    @media print {
+      .no-print { display: none !important; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body class="bg-light">
+  <div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+      <div>
+        <h4 class="mb-0">Reportes</h4>
+        <div class="text-muted small">{{ empresa }}</div>
+      </div>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="/nueva">Nueva Cotización</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/historial">Historial</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/agenda">Agenda</a>
+        <a class="btn btn-outline-danger btn-sm" href="/logout">Salir</a>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4 no-print">
+      <div class="card-body">
+        <form method="get" action="/reportes" class="row g-2 align-items-end">
+          <div class="col-6 col-md-3">
+            <label class="form-label">Desde</label>
+            <input type="date" class="form-control" name="desde" value="{{ desde }}">
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label">Hasta</label>
+            <input type="date" class="form-control" name="hasta" value="{{ hasta }}">
+          </div>
+          <div class="col-12 col-md-3">
+            <label class="form-label">Técnico</label>
+            <select class="form-select" name="tecnico">
+              <option value="">Todos</option>
+              {% for t in tecnicos %}
+                <option value="{{ t }}" {% if tecnico_filtro == t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-3 d-flex gap-2">
+            <button type="submit" class="btn btn-primary flex-grow-1">Filtrar</button>
+            <button type="button" class="btn btn-outline-secondary" onclick="window.print()">🖨️ PDF</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Encabezado reporte (visible en impresión) -->
+    <div class="text-center mb-3 d-none d-print-block">
+      <h5>{{ empresa }} — Reporte de Instalaciones</h5>
+      <p class="text-muted">Del {{ desde }} al {{ hasta }}{% if tecnico_filtro %} · Técnico: {{ tecnico_filtro }}{% endif %}</p>
+    </div>
+
+    <!-- Resumen tarjetas -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="card text-center border-primary">
+          <div class="card-body py-3">
+            <div class="fs-2 fw-bold text-primary">{{ stats.total }}</div>
+            <div class="text-muted small">Total instalaciones</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card text-center border-warning">
+          <div class="card-body py-3">
+            <div class="fs-2 fw-bold text-warning">{{ stats.pendientes }}</div>
+            <div class="text-muted small">Pendientes</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card text-center border-info">
+          <div class="card-body py-3">
+            <div class="fs-2 fw-bold text-info">{{ stats.en_curso }}</div>
+            <div class="text-muted small">En curso</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card text-center border-success">
+          <div class="card-body py-3">
+            <div class="fs-2 fw-bold text-success">{{ stats.completadas }}</div>
+            <div class="text-muted small">Completadas</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Totales de ventas -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <div class="card bg-success text-white text-center">
+          <div class="card-body py-3">
+            <div class="fs-4 fw-bold">Bs {{ "%.2f"|format(stats.total_sin_iva) }}</div>
+            <div class="small">Total sin IVA</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card bg-secondary text-white text-center">
+          <div class="card-body py-3">
+            <div class="fs-4 fw-bold">Bs {{ "%.2f"|format(stats.total_iva) }}</div>
+            <div class="small">IVA (13%)</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card bg-dark text-white text-center">
+          <div class="card-body py-3">
+            <div class="fs-4 fw-bold">Bs {{ "%.2f"|format(stats.total_con_iva) }}</div>
+            <div class="small">Total con IVA</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabla detalle -->
+    <div class="card">
+      <div class="card-header"><strong>Detalle de instalaciones</strong></div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>N° Cotiz.</th>
+              <th>Cliente</th>
+              <th>Fecha Instal.</th>
+              <th>Técnico</th>
+              <th>Estado</th>
+              <th>Total (c/IVA)</th>
+              <th class="no-print"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in instalaciones %}
+            <tr>
+              <td>{{ "%06d"|format(row.quote_no) }}</td>
+              <td>{{ row.client_name }}</td>
+              <td>{{ row.fecha_instalacion }}</td>
+              <td>{{ row.tecnico }}</td>
+              <td>
+                {% if row.estado == 'pendiente' %}
+                  <span class="badge bg-warning text-dark">⏳ Pendiente</span>
+                {% elif row.estado == 'en_curso' %}
+                  <span class="badge bg-info">🔧 En curso</span>
+                {% else %}
+                  <span class="badge bg-success">✅ Completada</span>
+                {% endif %}
+              </td>
+              <td>Bs {{ "%.2f"|format(row.total_con_iva) }}</td>
+              <td class="no-print">
+                <a class="btn btn-sm btn-outline-primary" href="/instalacion/{{ row.quote_id }}/agendar">Editar</a>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not instalaciones %}
+              <tr><td colspan="7" class="text-center text-muted p-4">Sin instalaciones en este período.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>
