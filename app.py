@@ -1295,9 +1295,80 @@ def cargar_camaras_wifi(request: Request, confirmar: str = ""):
     """)
 
 
-# =========================
-# Instalaciones / Agenda
-# =========================
+PRODUCTOS_VARIOS = [
+    ("Z050","Networking - Switches","Switch POE 4 Puertos - 2 Uplink 10/100M - IEEE 802.3/802.3u/802.3af/a - Dist. TX POE 250M con UTP Cat6 - Dimensiones 200x120x45mm","unidad",215.00),
+    ("DH-CS4218-18ET-135","Networking - Switches","Switch Administrable 18 Puertos Metálico - 16P POE Potencia 90W - Dist. Max UTP 250M - POE Watchdog - 16P RJ45 10/100Mbps - 2P RJ45 10/100/1000Mbps - 2P SFP","unidad",1744.00),
+    ("DHI-ASA1222GL-D","Control de Asistencia","Control Asistencia Standalone - Pantalla 2.4 - 1000 Usuarios - 2000 Huellas - 1000 Passwords - 1000 Tarjetas - Importa/Exporta datos USB Flash","unidad",685.00),
+    ("DHI-ASA1222EL-S","Control de Asistencia","Control Asistencia Standalone - Pantalla 2.4 - 1000 Usuarios - 2000 Huellas - 1000 Passwords - Importa/Exporta datos USB Flash - 1 RJ45","unidad",441.00),
+    ("SenseFP-M1","Control de Asistencia","Control Asistencia - Pantalla 2.8 - Huella 500 - RFID 500 125kHz - Cap. Reg. 100000 - USB Host - Wifi - Software ZLink - Incluye Fuente","unidad",692.00),
+    ("M1-FP-RFID","Control de Asistencia","Control de Asistencia - Pantalla 2.8 - Teclado Físico - RFID 1000 - Huella 1000 - Wifi - Software BioTime Cloud/ZKBio CVAccess - Incluye Fuente de Poder","unidad",585.00),
+    ("F302","Accesorios - Baluns","Balun Pasivo 4 en 1 - Transmisor Video HDCVI/AHD/Análogo/TVI - Distancia Max 440M en 720P - Reducción de Ruido","unidad",15.00),
+    ("Z043","Accesorios - Cajas","Caja de Conexiones para Cámaras Cuadrada - Material ABS - Temperatura -10 a 60C - IP44 - Dimensiones 11.8x10x5cm","unidad",12.00),
+    ("C723","Cableado - UTP","Cable UTP Categoría 6 CCAE 80% Cobre - 4 Pares - 2x0.57mm 23AWG 75 grados - Presentación 305 Metros - Color Blanco - Bajo Norma UL","rollo",604.00),
+    ("C712","Cableado - Conectores","Conectores RJ45 Categoría 6 - Diámetro Inserción para Cable 7.8mm - Paquete de 50 Unidades","paquete",16.00),
+    ("HUA722020ALA331","Almacenamiento - Discos","Disco Duro New Pull 2TB Ultrastar Hitachi - Cache 32MB - 7200RPM - SATA 3.0Gb/s - Enterprise","unidad",423.00),
+    ("SE-R9U-5409A","Infraestructura - Gabinetes","Gabinete 9U 19 Negro - Puerta de Vidrio","unidad",600.00),
+    ("IPC-HDW1230T1P-0280B-S6","Cámaras IP - Domo","Cámara IP Domo 2MP Metal/Plástica - Lente 2.8mm - Sensor 1/2.8 CMOS - IR 30M - ROI - Smart H.265+/H.264+ - DWDR - 3D NR - IP67 - 12V/PoE","unidad",385.00),
+    ("DHI-NVR2116HS-4KS3","Grabadores - NVR","Grabador IP 16 Canales - Protec. Perimetral - SMD Plus - 1VGA - 1HDMI - 1HDD hasta 16TB - 1RJ45 - ONVIF - Resolución 12MP/8MP/5MP/4MP/3MP/2MP/720p","unidad",745.00),
+]
+
+@app.get("/admin/cargar-productos-varios", response_class=HTMLResponse)
+def cargar_productos_varios(request: Request, confirmar: str = ""):
+    gate = require_login(request)
+    if gate:
+        return gate
+
+    if confirmar != "si":
+        return HTMLResponse("""
+        <html><body style="font-family:sans-serif;padding:30px;max-width:500px;margin:auto;">
+        <h3>Carga masiva: Productos Varios (Feb/Mar 2026)</h3>
+        <p>Se cargarán <strong>14 productos</strong>: Switches POE, Controles de Asistencia, Accesorios, Cableado, Almacenamiento, Grabadores.</p>
+        <p>Los productos con SKU duplicado serán <strong>omitidos</strong> automáticamente.</p>
+        <a href="/admin/cargar-productos-varios?confirmar=si"
+           style="background:#198754;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin-top:10px;">
+           Confirmar y cargar productos
+        </a>
+        &nbsp;
+        <a href="/productos" style="color:#666;">Cancelar</a>
+        </body></html>
+        """)
+
+    insertados = 0
+    omitidos = 0
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    for sku, categoria, nombre, unidad, precio in PRODUCTOS_VARIOS:
+        if IS_POSTGRES:
+            existe = db_fetchone("SELECT id FROM products WHERE sku=%s", (sku,))
+            if not existe:
+                db_exec(
+                    "INSERT INTO products(sku, categoria, nombre, unidad, precio_bs, activo) VALUES(%s,%s,%s,%s,%s,1)",
+                    (sku, categoria, nombre, unidad, precio),
+                )
+                insertados += 1
+            else:
+                omitidos += 1
+        else:
+            existe = db_fetchone("SELECT id FROM products WHERE sku=?", (sku,))
+            if not existe:
+                db_exec(
+                    "INSERT INTO products(sku, categoria, nombre, unidad, precio_bs, activo, created_at) VALUES(?,?,?,?,?,1,?)",
+                    (sku, categoria, nombre, unidad, precio, now),
+                )
+                insertados += 1
+            else:
+                omitidos += 1
+
+    return HTMLResponse(f"""
+    <html><body style="font-family:sans-serif;padding:30px;max-width:500px;margin:auto;">
+    <h3>Carga completada</h3>
+    <p><strong>{insertados}</strong> productos insertados correctamente.</p>
+    <p><strong>{omitidos}</strong> productos omitidos (SKU ya existía).</p>
+    <a href="/productos" style="background:#0d6efd;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin-top:10px;">
+       Ver productos
+    </a>
+    </body></html>
+    """)
 @dataclass
 class InstalacionRow:
     id: int
