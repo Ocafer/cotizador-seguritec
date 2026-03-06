@@ -895,3 +895,124 @@ def borrar(request: Request, quote_id: int):
     finally:
         con.close()
     return RedirectResponse(url="/historial", status_code=303)
+
+
+# =========================
+# Gestión de productos
+# =========================
+@dataclass
+class ProductoRow:
+    id: int
+    sku: str
+    categoria: str
+    nombre: str
+    unidad: str
+    precio_bs: float
+    activo: int
+
+def load_all_products() -> List[ProductoRow]:
+    if IS_POSTGRES:
+        rows = db_fetchall("SELECT id, sku, categoria, nombre, unidad, precio_bs, activo FROM products ORDER BY categoria, nombre")
+    else:
+        rows = db_fetchall("SELECT id, sku, categoria, nombre, unidad, precio_bs, activo FROM products ORDER BY categoria, nombre")
+    result = []
+    for r in rows:
+        result.append(ProductoRow(
+            id=int(r["id"]),
+            sku=str(r["sku"] or ""),
+            categoria=str(r["categoria"] or ""),
+            nombre=str(r["nombre"] or ""),
+            unidad=str(r["unidad"] or "unidad"),
+            precio_bs=float(r["precio_bs"] or 0),
+            activo=int(r["activo"]),
+        ))
+    return result
+
+@app.get("/productos", response_class=HTMLResponse)
+def productos_get(request: Request, msg: str = "", msg_type: str = "success"):
+    gate = require_login(request)
+    if gate:
+        return gate
+    productos = load_all_products()
+    return templates.TemplateResponse("productos.html", {
+        "request": request,
+        "productos": productos,
+        "empresa": EMPRESA_NOMBRE,
+        "msg": request.query_params.get("msg", ""),
+        "msg_type": request.query_params.get("msg_type", "success"),
+    })
+
+@app.post("/productos/guardar")
+def productos_guardar(
+    request: Request,
+    producto_id: str = Form(""),
+    sku: str = Form(""),
+    categoria: str = Form(...),
+    nombre: str = Form(...),
+    unidad: str = Form(...),
+    precio_bs: float = Form(...),
+):
+    gate = require_login(request)
+    if gate:
+        return gate
+
+    sku = sku.strip() or None
+    categoria = categoria.strip()
+    nombre = nombre.strip()
+    unidad = unidad.strip()
+
+    if producto_id:
+        # Editar existente
+        if IS_POSTGRES:
+            db_exec(
+                "UPDATE products SET sku=%s, categoria=%s, nombre=%s, unidad=%s, precio_bs=%s WHERE id=%s",
+                (sku, categoria, nombre, unidad, precio_bs, int(producto_id)),
+            )
+        else:
+            db_exec(
+                "UPDATE products SET sku=?, categoria=?, nombre=?, unidad=?, precio_bs=? WHERE id=?",
+                (sku, categoria, nombre, unidad, precio_bs, int(producto_id)),
+            )
+        msg = "Producto actualizado correctamente."
+    else:
+        # Nuevo producto
+        if IS_POSTGRES:
+            db_exec(
+                "INSERT INTO products(sku, categoria, nombre, unidad, precio_bs, activo) VALUES(%s,%s,%s,%s,%s,1)",
+                (sku, categoria, nombre, unidad, precio_bs),
+            )
+        else:
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            db_exec(
+                "INSERT INTO products(sku, categoria, nombre, unidad, precio_bs, activo, created_at) VALUES(?,?,?,?,?,1,?)",
+                (sku, categoria, nombre, unidad, precio_bs, now),
+            )
+        msg = "Producto agregado correctamente."
+
+    return RedirectResponse(url=f"/productos?msg={msg}&msg_type=success", status_code=303)
+
+@app.post("/productos/{producto_id}/toggle")
+def productos_toggle(request: Request, producto_id: int):
+    gate = require_login(request)
+    if gate:
+        return gate
+
+    if IS_POSTGRES:
+        db_exec("UPDATE products SET activo = CASE WHEN activo=1 THEN 0 ELSE 1 END WHERE id=%s", (producto_id,))
+    else:
+        db_exec("UPDATE products SET activo = CASE WHEN activo=1 THEN 0 ELSE 1 END WHERE id=?", (producto_id,))
+
+    return RedirectResponse(url="/productos?msg=Estado+actualizado.&msg_type=success", status_code=303)
+
+@app.post("/productos/{producto_id}/borrar")
+def productos_borrar(request: Request, producto_id: int):
+    gate = require_login(request)
+    if gate:
+        return gate
+
+    if IS_POSTGRES:
+        db_exec("DELETE FROM products WHERE id=%s", (producto_id,))
+    else:
+        db_exec("DELETE FROM products WHERE id=?", (producto_id,))
+
+    return RedirectResponse(url="/productos?msg=Producto+eliminado.&msg_type=warning", status_code=303)

@@ -27,6 +27,7 @@
       <div class="d-flex gap-2">
         <a class="btn btn-outline-secondary btn-sm" href="/nueva">Inicio</a>
         <a class="btn btn-outline-secondary btn-sm" href="/historial">Historial</a>
+        <a class="btn btn-outline-primary btn-sm" href="/productos">Productos</a>
         <a class="btn btn-outline-danger btn-sm" href="/logout">Salir</a>
       </div>
     </div>
@@ -35,7 +36,7 @@
       <div class="alert alert-danger">{{ request.query_params.get('err') }}</div>
     {% endif %}
 
-    <form method="post" action="/crear">
+    <form method="post" action="/crear" target="_blank">
       <div class="card mb-3">
         <div class="card-body">
           <div class="row g-2">
@@ -92,7 +93,10 @@
         </div>
       </div>
 
-      <button class="btn btn-success w-100" type="submit">Generar PDF</button>
+      <div class="d-flex gap-2">
+        <button class="btn btn-success flex-grow-1" type="submit">Generar PDF</button>
+        <button class="btn btn-outline-secondary" type="button" onclick="limpiarFormulario()">Limpiar formulario</button>
+      </div>
     </form>
   </div>
 
@@ -189,6 +193,17 @@
 
     renderResults(filtered);
   });
+
+  function limpiarFormulario() {
+    if (!confirm("¿Limpiar todo el formulario?")) return;
+    document.querySelector('input[name="client_name"]').value = '';
+    document.querySelector('input[name="delivery_time"]').value = '';
+    document.querySelector('input[name="validity_days"]').value = '7';
+    document.querySelector('textarea[name="notes"]').value = '';
+    document.getElementById('itemsBody').innerHTML = '';
+    results.innerHTML = '';
+    searchBox.value = '';
+  }
 </script>
 </body>
 </html>
