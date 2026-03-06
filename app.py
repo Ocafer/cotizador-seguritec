@@ -604,14 +604,14 @@ def dashboard(request: Request):
 
     # Ventas del mes actual (cotizaciones del mes)
     if IS_POSTGRES:
-        rows_mes = db_fetchall("""
-            SELECT q.id FROM quotes q
-            WHERE TO_CHAR(q.created_at, 'YYYY-MM') = %s
-        """, (mes_actual,))
+        rows_mes = db_fetchall(
+            "SELECT id FROM quotes WHERE created_at >= %s AND created_at < %s",
+            (f"{mes_actual}-01", f"{hoy.year}-{hoy.month+1:02d}-01" if hoy.month < 12 else f"{hoy.year+1}-01-01"),
+        )
     else:
-        rows_mes = db_fetchall("""
-            SELECT id FROM quotes WHERE substr(created_at, 1, 7) = ?
-        """, (mes_actual,))
+        rows_mes = db_fetchall(
+            "SELECT id FROM quotes WHERE substr(created_at,1,7) = ?", (mes_actual,)
+        )
 
     ventas_mes = sum(get_quote_total(int(r["id"])) for r in rows_mes)
     ventas_mes_sin_iva = ventas_mes / (1 + IVA_RATE)
@@ -668,7 +668,15 @@ def dashboard(request: Request):
         ym = d.strftime("%Y-%m")
         label = d.strftime("%b %Y")
         if IS_POSTGRES:
-            rows_m = db_fetchall("SELECT id FROM quotes WHERE TO_CHAR(created_at, 'YYYY-MM') = %s", (ym,))
+            primer_dia = dt.date(d.year, d.month, 1)
+            if d.month == 12:
+                ultimo_dia = dt.date(d.year + 1, 1, 1)
+            else:
+                ultimo_dia = dt.date(d.year, d.month + 1, 1)
+            rows_m = db_fetchall(
+                "SELECT id FROM quotes WHERE created_at >= %s AND created_at < %s",
+                (str(primer_dia), str(ultimo_dia)),
+            )
         else:
             rows_m = db_fetchall("SELECT id FROM quotes WHERE substr(created_at,1,7) = ?", (ym,))
         total_m = sum(get_quote_total(int(r["id"])) for r in rows_m)
