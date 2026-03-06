@@ -380,21 +380,15 @@ def load_products() -> List[Product]:
         WHERE activo=1
         ORDER BY categoria, nombre
     """)
-
     products: List[Product] = []
     for r in rows:
-        # En Postgres (dict_row): r["sku"]
-        # En SQLite (sqlite3.Row): r["sku"] también funciona
-        sku = (r["sku"] or "").strip() if r["sku"] is not None else ""
         products.append(Product(
-            sku=sku,
+            sku=(r["sku"] or "").strip() if r["sku"] else "",
             categoria=str(r["categoria"] or ""),
             nombre=str(r["nombre"] or ""),
             unidad=str(r["unidad"] or "unidad"),
             precio_bs=float(r["precio_bs"] or 0),
-            activo=int(r["activo"] or 1),
         ))
-
     return products
 
 
@@ -631,7 +625,7 @@ def crear_cotizacion(
                 psql("INSERT INTO quotes(quote_no, created_at, client_name, delivery_time, validity_days, notes) VALUES(?,?,?,?,?,?) RETURNING id"),
                 (qno, created_at, client_name.strip(), delivery_time.strip(), int(validity_days), notes.strip() or None),
             )
-            quote_id = cur.fetchone()[0]
+            quote_id = int(cur.fetchone()["id"])
 
             for it in items:
                 cur.execute(
