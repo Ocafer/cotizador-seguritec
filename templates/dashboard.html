@@ -1,0 +1,243 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard - {{ empresa }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    body { padding: 14px; background: #f8f9fa; }
+    .stat-card { border-radius: 12px; border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+    .stat-card .num { font-size: 2.4rem; font-weight: 700; line-height: 1; }
+    .stat-card .label { font-size: 0.85rem; opacity: 0.85; }
+    .acceso-btn { border-radius: 10px; padding: 14px; text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; transition: transform 0.15s; }
+    .acceso-btn:hover { transform: translateY(-2px); }
+    .acceso-btn .icon { font-size: 1.8rem; }
+    .card { border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-radius: 12px; }
+    .section-title { font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #6c757d; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid" style="max-width:1100px;">
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h4 class="mb-0 fw-bold">{{ empresa }}</h4>
+        <div class="text-muted small">{{ hoy }}</div>
+      </div>
+      <div class="d-flex gap-2 flex-wrap justify-content-end">
+        <a class="btn btn-primary btn-sm" href="/nueva">+ Nueva Cotización</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/historial">Historial</a>
+        <a class="btn btn-outline-primary btn-sm" href="/productos">Productos</a>
+        <a class="btn btn-outline-success btn-sm" href="/agenda">Agenda</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/tecnicos">Técnicos</a>
+        <a class="btn btn-outline-info btn-sm" href="/reportes">Reportes</a>
+        <a class="btn btn-outline-danger btn-sm" href="/logout">Salir</a>
+      </div>
+    </div>
+
+    <!-- Tarjetas de estado instalaciones -->
+    <p class="section-title">Estado de instalaciones</p>
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="card stat-card bg-warning text-white p-3">
+          <div class="num">{{ stats.pendientes }}</div>
+          <div class="label">⏳ Pendientes</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card bg-info text-white p-3">
+          <div class="num">{{ stats.en_curso }}</div>
+          <div class="label">🔧 En curso</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card bg-success text-white p-3">
+          <div class="num">{{ stats.completadas }}</div>
+          <div class="label">✅ Completadas</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card bg-dark text-white p-3">
+          <div class="num">{{ stats.total_instalaciones }}</div>
+          <div class="label">📋 Total agendadas</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ventas del mes + Gráfico -->
+    <div class="row g-3 mb-4">
+      <!-- Ventas mes -->
+      <div class="col-md-4">
+        <p class="section-title">Ventas del mes</p>
+        <div class="card stat-card bg-success text-white p-3 mb-3">
+          <div class="num" style="font-size:1.8rem;">Bs {{ "%.0f"|format(stats.ventas_mes_con_iva) }}</div>
+          <div class="label">Total con IVA — {{ mes_nombre }}</div>
+        </div>
+        <div class="card stat-card p-3 mb-3">
+          <div class="text-muted small">Sin IVA</div>
+          <div class="fw-bold">Bs {{ "%.2f"|format(stats.ventas_mes_sin_iva) }}</div>
+        </div>
+        <div class="card stat-card p-3">
+          <div class="text-muted small">Cotizaciones este mes</div>
+          <div class="fw-bold">{{ stats.cotizaciones_mes }} cotización(es)</div>
+        </div>
+      </div>
+
+      <!-- Gráfico torta estado -->
+      <div class="col-md-4">
+        <p class="section-title">Distribución por estado</p>
+        <div class="card p-3" style="height:240px;">
+          <canvas id="chartEstado"></canvas>
+        </div>
+      </div>
+
+      <!-- Gráfico barras ventas últimos 6 meses -->
+      <div class="col-md-4">
+        <p class="section-title">Ventas últimos 6 meses</p>
+        <div class="card p-3" style="height:240px;">
+          <canvas id="chartVentas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Próximas instalaciones -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-6">
+        <p class="section-title">📅 Próximas instalaciones (7 días)</p>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr><th>Fecha</th><th>Cliente</th><th>Técnico(s)</th><th>Estado</th></tr>
+              </thead>
+              <tbody>
+                {% for i in proximas_instalaciones %}
+                <tr>
+                  <td class="text-nowrap">{{ i.fecha_instalacion }}</td>
+                  <td>{{ i.client_name }}</td>
+                  <td class="text-muted small">{{ i.tecnico }}</td>
+                  <td>
+                    {% if i.estado == 'pendiente' %}<span class="badge bg-warning text-dark">⏳</span>
+                    {% elif i.estado == 'en_curso' %}<span class="badge bg-info">🔧</span>
+                    {% else %}<span class="badge bg-success">✅</span>{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+                {% if not proximas_instalaciones %}
+                <tr><td colspan="4" class="text-center text-muted py-3">Sin instalaciones próximas.</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cotizaciones recientes -->
+      <div class="col-md-6">
+        <p class="section-title">🧾 Cotizaciones recientes</p>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr><th>N°</th><th>Cliente</th><th>Fecha</th><th></th></tr>
+              </thead>
+              <tbody>
+                {% for q in cotizaciones_recientes %}
+                <tr>
+                  <td>{{ "%06d"|format(q.quote_no) }}</td>
+                  <td>{{ q.client_name }}</td>
+                  <td class="text-muted small text-nowrap">{{ q.created_at_str }}</td>
+                  <td>
+                    <a href="/cotizacion/{{ q.id }}/pdf" target="_blank" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-1">PDF</a>
+                  </td>
+                </tr>
+                {% endfor %}
+                {% if not cotizaciones_recientes %}
+                <tr><td colspan="4" class="text-center text-muted py-3">Sin cotizaciones aún.</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Accesos rápidos -->
+    <p class="section-title">Accesos rápidos</p>
+    <div class="row g-2 mb-3">
+      <div class="col-4 col-md-2">
+        <a href="/nueva" class="acceso-btn btn btn-outline-primary w-100">
+          <span class="icon">📝</span> Nueva Cotización
+        </a>
+      </div>
+      <div class="col-4 col-md-2">
+        <a href="/historial" class="acceso-btn btn btn-outline-secondary w-100">
+          <span class="icon">📂</span> Historial
+        </a>
+      </div>
+      <div class="col-4 col-md-2">
+        <a href="/agenda" class="acceso-btn btn btn-outline-success w-100">
+          <span class="icon">📅</span> Agenda
+        </a>
+      </div>
+      <div class="col-4 col-md-2">
+        <a href="/productos" class="acceso-btn btn btn-outline-primary w-100">
+          <span class="icon">📦</span> Productos
+        </a>
+      </div>
+      <div class="col-4 col-md-2">
+        <a href="/tecnicos" class="acceso-btn btn btn-outline-secondary w-100">
+          <span class="icon">👷</span> Técnicos
+        </a>
+      </div>
+      <div class="col-4 col-md-2">
+        <a href="/reportes" class="acceso-btn btn btn-outline-info w-100">
+          <span class="icon">📊</span> Reportes
+        </a>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+  // Gráfico torta — estado instalaciones
+  new Chart(document.getElementById('chartEstado'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Pendientes', 'En curso', 'Completadas'],
+      datasets: [{
+        data: [{{ stats.pendientes }}, {{ stats.en_curso }}, {{ stats.completadas }}],
+        backgroundColor: ['#ffc107', '#0dcaf0', '#198754'],
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }
+    }
+  });
+
+  // Gráfico barras — ventas últimos 6 meses
+  new Chart(document.getElementById('chartVentas'), {
+    type: 'bar',
+    data: {
+      labels: {{ meses_labels | tojson }},
+      datasets: [{
+        label: 'Ventas Bs (c/IVA)',
+        data: {{ meses_valores | tojson }},
+        backgroundColor: '#0d6efd',
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { font: { size: 10 } } }, x: { ticks: { font: { size: 10 } } } }
+    }
+  });
+</script>
+</body>
+</html>

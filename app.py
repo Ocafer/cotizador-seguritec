@@ -564,7 +564,140 @@ def logout(request: Request):
 def home(request: Request):
     if not is_logged_in(request):
         return RedirectResponse(url="/login", status_code=303)
-    return RedirectResponse(url="/nueva", status_code=303)
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard(request: Request):
+    gate = require_login(request)
+    if gate:
+        return gate
+
+    from calendar import month_name
+    hoy = datetime.now()
+    hoy_str = hoy.strftime("%Y-%m-%d")
+    mes_actual = hoy.strftime("%Y-%m")
+
+    # Stats instalaciones
+    if IS_POSTGRES:
+        row_inst = db_fetchone("""
+            SELECT
+              COUNT(*) AS total,
+              SUM(CASE WHEN estado='pendiente' THEN 1 ELSE 0 END) AS pendientes,
+              SUM(CASE WHEN estado='en_curso' THEN 1 ELSE 0 END) AS en_curso,
+              SUM(CASE WHEN estado='completada' THEN 1 ELSE 0 END) AS completadas
+            FROM instalaciones
+        """)
+    else:
+        row_inst = db_fetchone("""
+            SELECT
+              COUNT(*) AS total,
+              SUM(CASE WHEN estado='pendiente' THEN 1 ELSE 0 END) AS pendientes,
+              SUM(CASE WHEN estado='en_curso' THEN 1 ELSE 0 END) AS en_curso,
+              SUM(CASE WHEN estado='completada' THEN 1 ELSE 0 END) AS completadas
+            FROM instalaciones
+        """)
+
+    total_inst = int(row_inst["total"] or 0) if row_inst else 0
+    pendientes = int(row_inst["pendientes"] or 0) if row_inst else 0
+    en_curso = int(row_inst["en_curso"] or 0) if row_inst else 0
+    completadas = int(row_inst["completadas"] or 0) if row_inst else 0
+
+    # Ventas del mes actual (cotizaciones del mes)
+    if IS_POSTGRES:
+        rows_mes = db_fetchall("""
+            SELECT q.id FROM quotes q
+            WHERE TO_CHAR(q.created_at, 'YYYY-MM') = %s
+        """, (mes_actual,))
+    else:
+        rows_mes = db_fetchall("""
+            SELECT id FROM quotes WHERE substr(created_at, 1, 7) = ?
+        """, (mes_actual,))
+
+    ventas_mes = sum(get_quote_total(int(r["id"])) for r in rows_mes)
+    ventas_mes_sin_iva = ventas_mes / (1 + IVA_RATE)
+
+    # Próximas instalaciones (7 días)
+    fecha_limite = (hoy + __import__('datetime').timedelta(days=7)).strftime("%Y-%m-%d")
+    if IS_POSTGRES:
+        proximas_rows = db_fetchall("""
+            SELECT i.estado, i.tecnico, i.fecha_instalacion, q.client_name, q.id as quote_id
+            FROM instalaciones i JOIN quotes q ON q.id = i.quote_id
+            WHERE i.fecha_instalacion BETWEEN %s AND %s
+            ORDER BY i.fecha_instalacion
+            LIMIT 8
+        """, (hoy_str, fecha_limite))
+    else:
+        proximas_rows = db_fetchall("""
+            SELECT i.estado, i.tecnico, i.fecha_instalacion, q.client_name, q.id as quote_id
+            FROM instalaciones i JOIN quotes q ON q.id = i.quote_id
+            WHERE i.fecha_instalacion BETWEEN ? AND ?
+            ORDER BY i.fecha_instalacion
+            LIMIT 8
+        """, (hoy_str, fecha_limite))
+
+    proximas = [dict(r) for r in proximas_rows]
+
+    # Cotizaciones recientes
+    if IS_POSTGRES:
+        cots_rows = db_fetchall("SELECT id, quote_no, client_name, created_at FROM quotes ORDER BY id DESC LIMIT 6")
+    else:
+        cots_rows = db_fetchall("SELECT id, quote_no, client_name, created_at FROM quotes ORDER BY id DESC LIMIT 6")
+
+    @dataclass
+    class CotRow:
+        id: int
+        quote_no: int
+        client_name: str
+        created_at_str: str
+
+    cotizaciones_recientes = []
+    for r in cots_rows:
+        ca = r["created_at"]
+        ca_str = ca.strftime("%d/%m/%Y") if hasattr(ca, "strftime") else str(ca)[:10]
+        cotizaciones_recientes.append(CotRow(
+            id=int(r["id"]), quote_no=int(r["quote_no"]),
+            client_name=str(r["client_name"]), created_at_str=ca_str,
+        ))
+
+    # Ventas últimos 6 meses para el gráfico
+    import datetime as dt
+    meses_labels = []
+    meses_valores = []
+    for i in range(5, -1, -1):
+        d = hoy - dt.timedelta(days=30 * i)
+        ym = d.strftime("%Y-%m")
+        label = d.strftime("%b %Y")
+        if IS_POSTGRES:
+            rows_m = db_fetchall("SELECT id FROM quotes WHERE TO_CHAR(created_at, 'YYYY-MM') = %s", (ym,))
+        else:
+            rows_m = db_fetchall("SELECT id FROM quotes WHERE substr(created_at,1,7) = ?", (ym,))
+        total_m = sum(get_quote_total(int(r["id"])) for r in rows_m)
+        meses_labels.append(label)
+        meses_valores.append(round(total_m, 2))
+
+    meses_nombres = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                     "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+    mes_nombre = meses_nombres[hoy.month - 1]
+
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request,
+        "empresa": EMPRESA_NOMBRE,
+        "hoy": hoy.strftime("%d/%m/%Y"),
+        "mes_nombre": mes_nombre,
+        "stats": {
+            "pendientes": pendientes,
+            "en_curso": en_curso,
+            "completadas": completadas,
+            "total_instalaciones": total_inst,
+            "ventas_mes_con_iva": ventas_mes,
+            "ventas_mes_sin_iva": ventas_mes_sin_iva,
+            "cotizaciones_mes": len(rows_mes),
+        },
+        "proximas_instalaciones": proximas,
+        "cotizaciones_recientes": cotizaciones_recientes,
+        "meses_labels": meses_labels,
+        "meses_valores": meses_valores,
+    })
 
 @app.get("/nueva", response_class=HTMLResponse)
 def nueva(request: Request):
