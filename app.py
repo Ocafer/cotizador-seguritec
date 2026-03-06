@@ -1046,6 +1046,26 @@ def init_instalaciones_table():
                 created_at TIMESTAMP NOT NULL DEFAULT NOW()
             )
         """)
+        # Tabla técnicos
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS tecnicos (
+                id SERIAL PRIMARY KEY,
+                nombre TEXT NOT NULL,
+                telefono TEXT,
+                especialidad TEXT,
+                activo INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """)
+        # Tabla relación instalacion <-> técnicos (múltiples)
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS instalacion_tecnicos (
+                id SERIAL PRIMARY KEY,
+                instalacion_id INTEGER NOT NULL REFERENCES instalaciones(id) ON DELETE CASCADE,
+                tecnico_id INTEGER,
+                tecnico_nombre TEXT NOT NULL
+            )
+        """)
     else:
         db_exec("""
             CREATE TABLE IF NOT EXISTS instalaciones (
@@ -1059,6 +1079,25 @@ def init_instalaciones_table():
                 FOREIGN KEY (quote_id) REFERENCES quotes(id)
             )
         """)
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS tecnicos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                telefono TEXT,
+                especialidad TEXT,
+                activo INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+        """)
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS instalacion_tecnicos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                instalacion_id INTEGER NOT NULL,
+                tecnico_id INTEGER,
+                tecnico_nombre TEXT NOT NULL,
+                FOREIGN KEY (instalacion_id) REFERENCES instalaciones(id)
+            )
+        """)
 
 init_instalaciones_table()
 
@@ -1069,6 +1108,108 @@ def get_quote_total(quote_id: int) -> float:
         rows = db_fetchall("SELECT qty, unit_price FROM quote_items WHERE quote_id=?", (quote_id,))
     subtotal = sum(float(r["qty"]) * float(r["unit_price"]) for r in rows)
     return subtotal * (1 + IVA_RATE)
+
+# =========================
+# Técnicos helpers y rutas
+# =========================
+@dataclass
+class TecnicoRow:
+    id: int
+    nombre: str
+    telefono: str
+    especialidad: str
+    activo: int
+    total_instalaciones: int = 0
+
+def load_tecnicos_activos() -> List[TecnicoRow]:
+    rows = db_fetchall("SELECT id, nombre, telefono, especialidad, activo FROM tecnicos WHERE activo=1 ORDER BY nombre")
+    return [TecnicoRow(id=int(r["id"]), nombre=str(r["nombre"]), telefono=str(r["telefono"] or ""),
+                       especialidad=str(r["especialidad"] or ""), activo=1) for r in rows]
+
+def load_all_tecnicos() -> List[TecnicoRow]:
+    if IS_POSTGRES:
+        rows = db_fetchall("""
+            SELECT t.id, t.nombre, t.telefono, t.especialidad, t.activo,
+                   COUNT(it.id) AS total_instalaciones
+            FROM tecnicos t
+            LEFT JOIN instalacion_tecnicos it ON it.tecnico_id = t.id
+            GROUP BY t.id, t.nombre, t.telefono, t.especialidad, t.activo
+            ORDER BY t.nombre
+        """)
+    else:
+        rows = db_fetchall("""
+            SELECT t.id, t.nombre, t.telefono, t.especialidad, t.activo,
+                   COUNT(it.id) AS total_instalaciones
+            FROM tecnicos t
+            LEFT JOIN instalacion_tecnicos it ON it.tecnico_id = t.id
+            GROUP BY t.id
+            ORDER BY t.nombre
+        """)
+    return [TecnicoRow(id=int(r["id"]), nombre=str(r["nombre"]), telefono=str(r["telefono"] or ""),
+                       especialidad=str(r["especialidad"] or ""), activo=int(r["activo"]),
+                       total_instalaciones=int(r["total_instalaciones"])) for r in rows]
+
+@app.get("/tecnicos", response_class=HTMLResponse)
+def tecnicos_get(request: Request):
+    gate = require_login(request)
+    if gate:
+        return gate
+    return templates.TemplateResponse("tecnicos.html", {
+        "request": request,
+        "empresa": EMPRESA_NOMBRE,
+        "tecnicos": load_all_tecnicos(),
+        "msg": request.query_params.get("msg", ""),
+        "msg_type": request.query_params.get("msg_type", "success"),
+    })
+
+@app.post("/tecnicos/guardar")
+def tecnicos_guardar(
+    request: Request,
+    tecnico_id: str = Form(""),
+    nombre: str = Form(...),
+    telefono: str = Form(""),
+    especialidad: str = Form(""),
+    activo: int = Form(1),
+):
+    gate = require_login(request)
+    if gate:
+        return gate
+
+    nombre = nombre.strip()
+    telefono = telefono.strip() or None
+    especialidad = especialidad.strip() or None
+
+    if tecnico_id:
+        if IS_POSTGRES:
+            db_exec("UPDATE tecnicos SET nombre=%s, telefono=%s, especialidad=%s, activo=%s WHERE id=%s",
+                    (nombre, telefono, especialidad, activo, int(tecnico_id)))
+        else:
+            db_exec("UPDATE tecnicos SET nombre=?, telefono=?, especialidad=?, activo=? WHERE id=?",
+                    (nombre, telefono, especialidad, activo, int(tecnico_id)))
+        msg = "Técnico+actualizado."
+    else:
+        if IS_POSTGRES:
+            db_exec("INSERT INTO tecnicos(nombre, telefono, especialidad, activo) VALUES(%s,%s,%s,%s)",
+                    (nombre, telefono, especialidad, activo))
+        else:
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            db_exec("INSERT INTO tecnicos(nombre, telefono, especialidad, activo, created_at) VALUES(?,?,?,?,?)",
+                    (nombre, telefono, especialidad, activo, now))
+        msg = "Técnico+agregado."
+
+    return RedirectResponse(url=f"/tecnicos?msg={msg}&msg_type=success", status_code=303)
+
+@app.post("/tecnicos/{tecnico_id}/borrar")
+def tecnicos_borrar(request: Request, tecnico_id: int):
+    gate = require_login(request)
+    if gate:
+        return gate
+    if IS_POSTGRES:
+        db_exec("DELETE FROM tecnicos WHERE id=%s", (tecnico_id,))
+    else:
+        db_exec("DELETE FROM tecnicos WHERE id=?", (tecnico_id,))
+    return RedirectResponse(url="/tecnicos?msg=Técnico+eliminado.&msg_type=warning", status_code=303)
+
 
 @app.get("/instalacion/{quote_id}/agendar", response_class=HTMLResponse)
 def agendar_get(request: Request, quote_id: int):
@@ -1086,11 +1227,26 @@ def agendar_get(request: Request, quote_id: int):
     if not q:
         return RedirectResponse(url="/historial", status_code=303)
 
+    # Técnicos ya asignados a esta instalación
+    tecnicos_asignados = []
+    if inst:
+        if IS_POSTGRES:
+            tecs = db_fetchall("SELECT tecnico_id, tecnico_nombre FROM instalacion_tecnicos WHERE instalacion_id=%s", (inst["id"],))
+        else:
+            tecs = db_fetchall("SELECT tecnico_id, tecnico_nombre FROM instalacion_tecnicos WHERE instalacion_id=?", (inst["id"],))
+        tecnicos_asignados = [{"id": r["tecnico_id"], "nombre": r["tecnico_nombre"]} for r in tecs]
+
+    # Técnicos activos para el select
+    tecs_activos = load_tecnicos_activos()
+
+    import json
     return templates.TemplateResponse("agendar.html", {
         "request": request,
         "q": q,
         "instalacion": inst,
         "empresa": EMPRESA_NOMBRE,
+        "tecnicos_activos": tecs_activos,
+        "tecnicos_asignados_json": json.dumps(tecnicos_asignados),
     })
 
 @app.post("/instalacion/{quote_id}/guardar")
@@ -1098,7 +1254,7 @@ def agendar_post(
     request: Request,
     quote_id: int,
     fecha_instalacion: str = Form(...),
-    tecnico: str = Form(...),
+    tecnicos_json: str = Form("[]"),
     estado: str = Form("pendiente"),
     notas_instalacion: str = Form(""),
 ):
@@ -1106,30 +1262,67 @@ def agendar_post(
     if gate:
         return gate
 
+    import json as _json
+    try:
+        tecs = _json.loads(tecnicos_json)
+    except Exception:
+        tecs = []
+
+    # Nombre resumido para campo legado "tecnico"
+    tecnico_str = ", ".join(t["nombre"] for t in tecs) if tecs else "Sin asignar"
+
     if IS_POSTGRES:
         existing = db_fetchone("SELECT id FROM instalaciones WHERE quote_id=%s", (quote_id,))
         if existing:
+            inst_id = int(existing["id"])
             db_exec(
-                "UPDATE instalaciones SET fecha_instalacion=%s, tecnico=%s, estado=%s, notas_instalacion=%s WHERE quote_id=%s",
-                (fecha_instalacion, tecnico.strip(), estado, notas_instalacion.strip() or None, quote_id),
+                "UPDATE instalaciones SET fecha_instalacion=%s, tecnico=%s, estado=%s, notas_instalacion=%s WHERE id=%s",
+                (fecha_instalacion, tecnico_str, estado, notas_instalacion.strip() or None, inst_id),
             )
+            db_exec("DELETE FROM instalacion_tecnicos WHERE instalacion_id=%s", (inst_id,))
         else:
+            con = db_connect()
+            try:
+                cur = con.cursor()
+                cur.execute(
+                    "INSERT INTO instalaciones(quote_id, fecha_instalacion, tecnico, estado, notas_instalacion) VALUES(%s,%s,%s,%s,%s) RETURNING id",
+                    (quote_id, fecha_instalacion, tecnico_str, estado, notas_instalacion.strip() or None),
+                )
+                inst_id = int(cur.fetchone()["id"])
+                con.commit()
+            finally:
+                con.close()
+        for t in tecs:
             db_exec(
-                "INSERT INTO instalaciones(quote_id, fecha_instalacion, tecnico, estado, notas_instalacion) VALUES(%s,%s,%s,%s,%s)",
-                (quote_id, fecha_instalacion, tecnico.strip(), estado, notas_instalacion.strip() or None),
+                "INSERT INTO instalacion_tecnicos(instalacion_id, tecnico_id, tecnico_nombre) VALUES(%s,%s,%s)",
+                (inst_id, t.get("id"), t["nombre"]),
             )
     else:
         existing = db_fetchone("SELECT id FROM instalaciones WHERE quote_id=?", (quote_id,))
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if existing:
+            inst_id = int(existing["id"])
             db_exec(
-                "UPDATE instalaciones SET fecha_instalacion=?, tecnico=?, estado=?, notas_instalacion=? WHERE quote_id=?",
-                (fecha_instalacion, tecnico.strip(), estado, notas_instalacion.strip() or None, quote_id),
+                "UPDATE instalaciones SET fecha_instalacion=?, tecnico=?, estado=?, notas_instalacion=? WHERE id=?",
+                (fecha_instalacion, tecnico_str, estado, notas_instalacion.strip() or None, inst_id),
             )
+            db_exec("DELETE FROM instalacion_tecnicos WHERE instalacion_id=?", (inst_id,))
         else:
+            con = db_connect()
+            try:
+                cur = con.cursor()
+                cur.execute(
+                    "INSERT INTO instalaciones(quote_id, fecha_instalacion, tecnico, estado, notas_instalacion, created_at) VALUES(?,?,?,?,?,?)",
+                    (quote_id, fecha_instalacion, tecnico_str, estado, notas_instalacion.strip() or None, now),
+                )
+                inst_id = cur.lastrowid
+                con.commit()
+            finally:
+                con.close()
+        for t in tecs:
             db_exec(
-                "INSERT INTO instalaciones(quote_id, fecha_instalacion, tecnico, estado, notas_instalacion, created_at) VALUES(?,?,?,?,?,?)",
-                (quote_id, fecha_instalacion, tecnico.strip(), estado, notas_instalacion.strip() or None, now),
+                "INSERT INTO instalacion_tecnicos(instalacion_id, tecnico_id, tecnico_nombre) VALUES(?,?,?)",
+                (inst_id, t.get("id"), t["nombre"]),
             )
 
     return RedirectResponse(url="/agenda", status_code=303)
