@@ -436,22 +436,34 @@ def generate_pdf(
     x0 = 18 * mm
     y = height - 18 * mm
 
-    # Logo opcional
+    # ---- Encabezado: texto izquierda, logo derecha ----
+    logo_w = 28 * mm
+    logo_h = 28 * mm
+    logo_x = width - x0 - logo_w
+    logo_y = y - logo_h + 4 * mm
+
     if LOGO_PATH and os.path.exists(LOGO_PATH):
         try:
-            c.drawImage(LOGO_PATH, x0, y - 12 * mm, width=30 * mm, height=12 * mm, mask='auto')
+            c.drawImage(LOGO_PATH, logo_x, logo_y, width=logo_w, height=logo_h,
+                        mask="auto", preserveAspectRatio=True)
         except Exception:
             pass
 
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(x0 + (35 * mm if (LOGO_PATH and os.path.exists(LOGO_PATH)) else 0), y, EMPRESA_NOMBRE)
+    # Nombre empresa y telefono a la izquierda
+    c.setFont("Helvetica-Bold", 15)
+    c.drawString(x0, y, EMPRESA_NOMBRE)
+    y -= 7 * mm
     c.setFont("Helvetica", 10)
-    y -= 6 * mm
     c.drawString(x0, y, f"Telf.: {EMPRESA_TELF}")
-    y -= 10 * mm
+    y -= 7 * mm
+
+    # Linea separadora
+    c.setLineWidth(0.8)
+    c.line(x0, y, width - x0, y)
+    y -= 8 * mm
 
     c.setFont("Helvetica-Bold", 13)
-    c.drawString(x0, y, "COTIZACIÓN")
+    c.drawString(x0, y, "COTIZACION")
     y -= 8 * mm
 
     c.setFont("Helvetica", 10)
