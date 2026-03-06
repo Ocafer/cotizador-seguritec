@@ -57,13 +57,13 @@
       </div>
     </div>
 
-    <!-- Encabezado reporte (visible en impresión) -->
+    <!-- Encabezado impresión -->
     <div class="text-center mb-3 d-none d-print-block">
-      <h5>{{ empresa }} — Reporte de Instalaciones</h5>
+      <h5>{{ empresa }} — Reporte de Instalaciones y Utilidades</h5>
       <p class="text-muted">Del {{ desde }} al {{ hasta }}{% if tecnico_filtro %} · Técnico: {{ tecnico_filtro }}{% endif %}</p>
     </div>
 
-    <!-- Resumen tarjetas -->
+    <!-- Tarjetas estados -->
     <div class="row g-3 mb-4">
       <div class="col-6 col-md-3">
         <div class="card text-center border-primary">
@@ -99,7 +99,7 @@
       </div>
     </div>
 
-    <!-- Totales de ventas -->
+    <!-- Ventas -->
     <div class="row g-3 mb-4">
       <div class="col-md-4">
         <div class="card bg-success text-white text-center">
@@ -127,9 +127,36 @@
       </div>
     </div>
 
-    <!-- Tabla detalle -->
+    <!-- Resumen utilidades del período -->
+    <div class="card mb-4 border-success">
+      <div class="card-header bg-success text-white"><strong>📊 Resumen de Utilidades del Período</strong></div>
+      <div class="row g-0">
+        <div class="col-6 col-md-3 border-end border-bottom p-3 text-center">
+          <div class="text-muted small">Ingresos (c/IVA)</div>
+          <div class="fs-5 fw-bold text-success">Bs {{ "%.2f"|format(stats.total_con_iva) }}</div>
+        </div>
+        <div class="col-6 col-md-3 border-end border-bottom p-3 text-center">
+          <div class="text-muted small">Total Gastos</div>
+          <div class="fs-5 fw-bold text-danger">Bs {{ "%.2f"|format(stats.total_gastos) }}</div>
+        </div>
+        <div class="col-6 col-md-3 border-end p-3 text-center">
+          <div class="text-muted small">Utilidad Neta</div>
+          <div class="fs-5 fw-bold {% if stats.utilidad >= 0 %}text-success{% else %}text-danger{% endif %}">
+            Bs {{ "%.2f"|format(stats.utilidad) }}
+          </div>
+        </div>
+        <div class="col-6 col-md-3 p-3 text-center">
+          <div class="text-muted small">Margen</div>
+          <div class="fs-5 fw-bold {% if stats.margen >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {{ "%.1f"|format(stats.margen) }}%
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabla detalle con utilidad por trabajo -->
     <div class="card">
-      <div class="card-header"><strong>Detalle de instalaciones</strong></div>
+      <div class="card-header"><strong>Detalle por trabajo</strong></div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
           <thead class="table-light">
@@ -139,7 +166,10 @@
               <th>Fecha Instal.</th>
               <th>Técnico</th>
               <th>Estado</th>
-              <th>Total (c/IVA)</th>
+              <th class="text-end">Cotización</th>
+              <th class="text-end">Gastos</th>
+              <th class="text-end">Utilidad</th>
+              <th class="text-end">Margen</th>
               <th class="no-print"></th>
             </tr>
           </thead>
@@ -159,14 +189,24 @@
                   <span class="badge bg-success">✅ Completada</span>
                 {% endif %}
               </td>
-              <td>Bs {{ "%.2f"|format(row.total_con_iva) }}</td>
+              <td class="text-end">Bs {{ "%.2f"|format(row.total_con_iva) }}</td>
+              <td class="text-end text-danger">
+                {% if row.total_gastos > 0 %}Bs {{ "%.2f"|format(row.total_gastos) }}{% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              <td class="text-end fw-bold {% if row.utilidad >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if row.total_gastos > 0 %}Bs {{ "%.2f"|format(row.utilidad) }}{% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              <td class="text-end {% if row.margen >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if row.total_gastos > 0 %}{{ "%.1f"|format(row.margen) }}%{% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
               <td class="no-print">
+                <a class="btn btn-sm btn-outline-warning" href="/gastos/{{ row.quote_id }}">Gastos</a>
                 <a class="btn btn-sm btn-outline-primary" href="/instalacion/{{ row.quote_id }}/agendar">Editar</a>
               </td>
             </tr>
             {% endfor %}
             {% if not instalaciones %}
-              <tr><td colspan="7" class="text-center text-muted p-4">Sin instalaciones en este período.</td></tr>
+              <tr><td colspan="10" class="text-center text-muted p-4">Sin instalaciones en este período.</td></tr>
             {% endif %}
           </tbody>
         </table>
@@ -174,5 +214,6 @@
     </div>
 
   </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

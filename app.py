@@ -1426,6 +1426,16 @@ def init_instalaciones_table():
                 tecnico_nombre TEXT NOT NULL
             )
         """)
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS gastos_trabajo (
+                id SERIAL PRIMARY KEY,
+                quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+                categoria TEXT NOT NULL,
+                descripcion TEXT NOT NULL,
+                monto NUMERIC(12,2) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """)
     else:
         db_exec("""
             CREATE TABLE IF NOT EXISTS instalaciones (
@@ -1456,6 +1466,17 @@ def init_instalaciones_table():
                 tecnico_id INTEGER,
                 tecnico_nombre TEXT NOT NULL,
                 FOREIGN KEY (instalacion_id) REFERENCES instalaciones(id)
+            )
+        """)
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS gastos_trabajo (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_id INTEGER NOT NULL,
+                categoria TEXT NOT NULL,
+                descripcion TEXT NOT NULL,
+                monto REAL NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (quote_id) REFERENCES quotes(id)
             )
         """)
 
@@ -1760,6 +1781,95 @@ def agenda(request: Request, fecha: str = ""):
         "total_dia": len(instalaciones_dia),
     })
 
+
+# =========================
+# Gastos por trabajo
+# =========================
+@dataclass
+class GastoRow:
+    id: int
+    quote_id: int
+    categoria: str
+    descripcion: str
+    monto: float
+
+def get_gastos(quote_id: int) -> List[GastoRow]:
+    if IS_POSTGRES:
+        rows = db_fetchall("SELECT id, quote_id, categoria, descripcion, monto FROM gastos_trabajo WHERE quote_id=%s ORDER BY id", (quote_id,))
+    else:
+        rows = db_fetchall("SELECT id, quote_id, categoria, descripcion, monto FROM gastos_trabajo WHERE quote_id=? ORDER BY id", (quote_id,))
+    return [GastoRow(id=int(r["id"]), quote_id=int(r["quote_id"]), categoria=str(r["categoria"]),
+                     descripcion=str(r["descripcion"]), monto=float(r["monto"])) for r in rows]
+
+def get_total_gastos(quote_id: int) -> float:
+    gastos = get_gastos(quote_id)
+    return sum(g.monto for g in gastos)
+
+@app.get("/gastos/{quote_id}", response_class=HTMLResponse)
+def gastos_get(request: Request, quote_id: int, msg: str = "", msg_type: str = "success"):
+    gate = require_login(request)
+    if gate:
+        return gate
+    if IS_POSTGRES:
+        q = db_fetchone("SELECT id, quote_no, client_name, created_at FROM quotes WHERE id=%s", (quote_id,))
+    else:
+        q = db_fetchone("SELECT id, quote_no, client_name, created_at FROM quotes WHERE id=?", (quote_id,))
+    if not q:
+        return RedirectResponse(url="/historial", status_code=303)
+
+    gastos = get_gastos(quote_id)
+    total_cotizacion = get_quote_total(quote_id)
+    total_gastos = sum(g.monto for g in gastos)
+    utilidad = total_cotizacion - total_gastos
+    margen = (utilidad / total_cotizacion * 100) if total_cotizacion > 0 else 0
+
+    desglose: dict = {}
+    for g in gastos:
+        desglose[g.categoria] = desglose.get(g.categoria, 0) + g.monto
+
+    return templates.TemplateResponse("gastos.html", {
+        "request": request,
+        "empresa": EMPRESA_NOMBRE,
+        "q": dict(q),
+        "gastos": gastos,
+        "total_cotizacion": total_cotizacion,
+        "total_gastos": total_gastos,
+        "utilidad": utilidad,
+        "margen": margen,
+        "desglose": desglose,
+        "msg": msg,
+        "msg_type": msg_type,
+    })
+
+@app.post("/gastos/{quote_id}/agregar")
+def gastos_agregar(request: Request, quote_id: int,
+                   categoria: str = Form(...), descripcion: str = Form(...), monto: float = Form(...)):
+    gate = require_login(request)
+    if gate:
+        return gate
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if IS_POSTGRES:
+        db_exec("INSERT INTO gastos_trabajo(quote_id, categoria, descripcion, monto) VALUES(%s,%s,%s,%s)",
+                (quote_id, categoria, descripcion, monto))
+    else:
+        db_exec("INSERT INTO gastos_trabajo(quote_id, categoria, descripcion, monto, created_at) VALUES(?,?,?,?,?)",
+                (quote_id, categoria, descripcion, monto, now))
+    return RedirectResponse(url=f"/gastos/{quote_id}?msg=Gasto+agregado.&msg_type=success", status_code=303)
+
+@app.post("/gastos/{gasto_id}/borrar")
+def gastos_borrar(request: Request, gasto_id: int):
+    gate = require_login(request)
+    if gate:
+        return gate
+    if IS_POSTGRES:
+        g = db_fetchone("SELECT quote_id FROM gastos_trabajo WHERE id=%s", (gasto_id,))
+        db_exec("DELETE FROM gastos_trabajo WHERE id=%s", (gasto_id,))
+    else:
+        g = db_fetchone("SELECT quote_id FROM gastos_trabajo WHERE id=?", (gasto_id,))
+        db_exec("DELETE FROM gastos_trabajo WHERE id=?", (gasto_id,))
+    quote_id = int(g["quote_id"]) if g else 0
+    return RedirectResponse(url=f"/gastos/{quote_id}?msg=Gasto+eliminado.&msg_type=warning", status_code=303)
+
 @app.get("/reportes", response_class=HTMLResponse)
 def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = ""):
     gate = require_login(request)
@@ -1798,6 +1908,9 @@ def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = 
         if tecnico and r["tecnico"] != tecnico:
             continue
         total = get_quote_total(int(r["quote_id"]))
+        total_gastos = get_total_gastos(int(r["quote_id"]))
+        utilidad = total - total_gastos
+        margen = (utilidad / total * 100) if total > 0 else 0
         instalaciones.append({
             "quote_id": r["quote_id"],
             "quote_no": r["quote_no"],
@@ -1806,11 +1919,17 @@ def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = 
             "tecnico": r["tecnico"],
             "estado": r["estado"],
             "total_con_iva": total,
+            "total_gastos": total_gastos,
+            "utilidad": utilidad,
+            "margen": margen,
         })
 
     total_con_iva = sum(i["total_con_iva"] for i in instalaciones)
     total_sin_iva = total_con_iva / (1 + IVA_RATE)
     total_iva = total_con_iva - total_sin_iva
+    total_gastos_global = sum(i["total_gastos"] for i in instalaciones)
+    utilidad_global = total_con_iva - total_gastos_global
+    margen_global = (utilidad_global / total_con_iva * 100) if total_con_iva > 0 else 0
 
     stats = {
         "total": len(instalaciones),
@@ -1820,6 +1939,9 @@ def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = 
         "total_sin_iva": total_sin_iva,
         "total_iva": total_iva,
         "total_con_iva": total_con_iva,
+        "total_gastos": total_gastos_global,
+        "utilidad": utilidad_global,
+        "margen": margen_global,
     }
 
     return templates.TemplateResponse("reportes.html", {
