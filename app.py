@@ -255,14 +255,13 @@ def init_db() -> None:
         """)
         db_exec("""
             CREATE TABLE IF NOT EXISTS counter (
-                key TEXT PRIMARY KEY,
-                value INTEGER NOT NULL
+                id SERIAL PRIMARY KEY,
+                last_quote_no INTEGER NOT NULL DEFAULT 0
             )
         """)
         db_exec("""
-            INSERT INTO counter(key, value)
-            VALUES('quote_no', 0)
-            ON CONFLICT (key) DO NOTHING
+            INSERT INTO counter(last_quote_no)
+            SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM counter)
         """)
         db_exec("""
             CREATE TABLE IF NOT EXISTS products (
@@ -398,9 +397,9 @@ seed_products_from_excel_if_empty()
 
 def next_quote_no() -> int:
     if IS_POSTGRES:
-        db_exec("UPDATE counter SET value = value + 1 WHERE key='quote_no'")
-        row = db_fetchone("SELECT value FROM counter WHERE key='quote_no'")
-        return int(row["value"])
+        db_exec("UPDATE counter SET last_quote_no = last_quote_no + 1")
+        row = db_fetchone("SELECT last_quote_no FROM counter LIMIT 1")
+        return int(row["last_quote_no"])
     else:
         con = db_connect()
         try:
