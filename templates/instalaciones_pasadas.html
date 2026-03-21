@@ -5,7 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Instalaciones Pasadas</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>body{padding:14px;} @media print{.no-print{display:none!important;}}</style>
+  <style>
+    body{padding:14px;}
+    @media print{.no-print{display:none!important;}}
+    #clienteSugerencias { position:absolute; z-index:999; background:#fff; border:1px solid #ccc; border-radius:4px; width:100%; max-height:200px; overflow-y:auto; }
+    #clienteSugerencias div { padding:6px 10px; cursor:pointer; }
+    #clienteSugerencias div:hover { background:#f0f0f0; }
+    .producto-tag { display:inline-flex; align-items:center; gap:4px; }
+  </style>
 </head>
 <body class="bg-light">
 <div class="container">
@@ -16,6 +23,7 @@
     </div>
     <div class="d-flex gap-2">
       <a class="btn btn-outline-secondary btn-sm" href="/">Inicio</a>
+      <a class="btn btn-outline-dark btn-sm" href="/clientes">Clientes</a>
       <a class="btn btn-outline-info btn-sm" href="/reportes">Reportes</a>
       <button class="btn btn-outline-secondary btn-sm" onclick="window.print()">🖨️</button>
       <a class="btn btn-outline-danger btn-sm" href="/logout">Salir</a>
@@ -58,44 +66,87 @@
     </div>
   </div>
 
-  <!-- Formulario agregar -->
+  <!-- Formulario -->
   <div class="card mb-4 no-print">
     <div class="card-header"><strong id="formTitle">Registrar trabajo pasado</strong></div>
     <div class="card-body">
       <form method="post" action="/instalaciones-pasadas/guardar" id="regForm">
         <input type="hidden" name="registro_id" id="registroId" value="0">
-        <div class="row g-2">
+
+        <div class="row g-2 mb-2">
+          <!-- Fecha -->
           <div class="col-6 col-md-2">
             <label class="form-label">Fecha *</label>
             <input type="date" class="form-control" name="fecha_instalacion" id="fFecha" required>
           </div>
-          <div class="col-6 col-md-3">
+
+          <!-- Cliente con autocomplete -->
+          <div class="col-12 col-md-4" style="position:relative;">
             <label class="form-label">Cliente *</label>
-            <input type="text" class="form-control" name="cliente_nombre" id="fCliente" required placeholder="Nombre del cliente">
+            <input type="text" class="form-control" name="cliente_nombre" id="fCliente" required
+                   placeholder="Escribe o selecciona cliente..." autocomplete="off" oninput="buscarCliente(this.value)">
+            <div id="clienteSugerencias"></div>
           </div>
+
+          <!-- Técnicos -->
           <div class="col-12 col-md-3">
             <label class="form-label">Técnicos *</label>
-            <input type="text" class="form-control" name="tecnicos" id="fTecnicos" required placeholder="Ej: Juan, Pedro">
+            <input type="text" class="form-control" name="tecnicos" id="fTecnicos" required
+                   placeholder="Ej: Juan, Pedro"
+                   list="listaTecnicos">
+            <datalist id="listaTecnicos">
+              {% for t in tecnicos_activos %}
+              <option value="{{ t.nombre }}">
+              {% endfor %}
+            </datalist>
           </div>
+
+          <!-- Monto y gastos -->
           <div class="col-6 col-md-2">
             <label class="form-label">Monto cobrado (Bs)</label>
             <input type="number" class="form-control" name="monto_cobrado" id="fMonto" step="0.01" min="0" value="0">
           </div>
-          <div class="col-6 col-md-2">
+          <div class="col-6 col-md-1">
             <label class="form-label">Gastos (Bs)</label>
             <input type="number" class="form-control" name="gastos" id="fGastos" step="0.01" min="0" value="0">
           </div>
-          <div class="col-12">
-            <label class="form-label">Descripción del trabajo *</label>
-            <input type="text" class="form-control" name="descripcion" id="fDescripcion" required
-                   placeholder="Ej: Instalación 4 cámaras IMOU + NVR Dahua en local comercial">
-          </div>
-          <div class="col-12">
-            <label class="form-label">Notas (opcional)</label>
-            <input type="text" class="form-control" name="notas" id="fNotas" placeholder="Observaciones adicionales...">
-          </div>
         </div>
-        <div class="d-flex gap-2 mt-3">
+
+        <!-- Selector de productos -->
+        <div class="mb-2">
+          <label class="form-label fw-bold">Productos instalados</label>
+          <div class="input-group mb-2">
+            <input type="text" class="form-control" id="buscarProducto"
+                   placeholder="Buscar producto por nombre o SKU..." oninput="filtrarProductos(this.value)">
+          </div>
+          <div id="productosResultados" class="border rounded p-2 bg-white mb-2" style="max-height:180px;overflow-y:auto;display:none;">
+            {% for p in productos %}
+            <div class="result-item d-flex justify-content-between align-items-center py-1 px-1 border-bottom"
+                 style="cursor:pointer;" data-nombre="{{ p.nombre|e }}" data-sku="{{ p.sku or '' }}"
+                 onclick="agregarProducto('{{ p.sku or '' }}', '{{ p.nombre|e }}', {{ p.precio_bs }})">
+              <span class="small">{% if p.sku %}<code class="text-muted">{{ p.sku }}</code> — {% endif %}{{ p.nombre }}</span>
+              <span class="badge bg-success ms-2">Bs {{ "%.2f"|format(p.precio_bs) }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          <!-- Tags de productos seleccionados -->
+          <div id="productosSeleccionados" class="d-flex flex-wrap gap-2 mb-2"></div>
+        </div>
+
+        <!-- Descripción (se llena automáticamente con productos pero editable) -->
+        <div class="mb-2">
+          <label class="form-label">Descripción del trabajo *</label>
+          <textarea class="form-control" name="descripcion" id="fDescripcion" required rows="2"
+                    placeholder="Ej: Instalación 4 cámaras IMOU + NVR Dahua en local comercial"></textarea>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label">Notas (opcional)</label>
+          <input type="text" class="form-control" name="notas" id="fNotas"
+                 placeholder="Dirección, observaciones adicionales...">
+        </div>
+
+        <div class="d-flex gap-2 mt-2">
           <button type="submit" class="btn btn-success" id="btnGuardar">+ Registrar trabajo</button>
           <button type="button" class="btn btn-outline-secondary d-none" id="btnCancelar" onclick="resetForm()">Cancelar</button>
         </div>
@@ -103,9 +154,10 @@
     </div>
   </div>
 
-  <!-- Buscador -->
+  <!-- Buscador tabla -->
   <div class="mb-3 no-print">
-    <input type="text" class="form-control" id="buscador" placeholder="Buscar por cliente, técnico, descripción..." oninput="filtrar()">
+    <input type="text" class="form-control" id="buscador"
+           placeholder="Buscar por cliente, técnico, descripción..." oninput="filtrarTabla()">
   </div>
 
   <!-- Tabla -->
@@ -135,7 +187,9 @@
             <td class="text-nowrap">{{ r.fecha_instalacion }}</td>
             <td><strong>{{ r.cliente_nombre }}</strong></td>
             <td class="text-muted small">{{ r.tecnicos }}</td>
-            <td class="small">{{ r.descripcion }}{% if r.notas %}<br><span class="text-muted">{{ r.notas }}</span>{% endif %}</td>
+            <td class="small">{{ r.descripcion }}
+              {% if r.notas %}<br><span class="text-muted">{{ r.notas }}</span>{% endif %}
+            </td>
             <td class="text-end text-success fw-bold">Bs {{ "%.2f"|format(r.monto_cobrado) }}</td>
             <td class="text-end text-danger">Bs {{ "%.2f"|format(r.gastos) }}</td>
             <td class="text-end fw-bold {% if r.utilidad >= 0 %}text-success{% else %}text-danger{% endif %}">
@@ -149,15 +203,15 @@
                 onclick="editar({{ r.id }}, '{{ r.fecha_instalacion }}', '{{ r.cliente_nombre|e }}', '{{ r.tecnicos|e }}', '{{ r.descripcion|e }}', {{ r.monto_cobrado }}, {{ r.gastos }}, '{{ r.notas|e }}')">
                 Editar
               </button>
-              <form method="post" action="/instalaciones-pasadas/{{ r.id }}/borrar" style="display:inline"
-                    onsubmit="return confirm('¿Eliminar este registro?')">
+              <form method="post" action="/instalaciones-pasadas/{{ r.id }}/borrar"
+                    style="display:inline" onsubmit="return confirm('¿Eliminar este registro?')">
                 <button class="btn btn-sm btn-outline-danger">✕</button>
               </form>
             </td>
           </tr>
           {% endfor %}
           {% if not registros %}
-          <tr><td colspan="9" class="text-center text-muted py-4">Sin registros aún. Agrega los trabajos pasados.</td></tr>
+          <tr><td colspan="9" class="text-center text-muted py-4">Sin registros aún.</td></tr>
           {% endif %}
           {% if registros %}
           <tr class="table-light fw-bold">
@@ -178,9 +232,94 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-// Fecha de hoy por defecto
+// ── Datos del servidor ──────────────────────────────────────────────
+const CLIENTES = {{ clientes | map(attribute='nombre') | list | tojson }};
+const PRODUCTOS_SELECCIONADOS = [];
+
+// ── Fecha hoy ───────────────────────────────────────────────────────
 document.getElementById('fFecha').valueAsDate = new Date();
 
+// ── Autocomplete clientes ───────────────────────────────────────────
+function buscarCliente(q) {
+  const box = document.getElementById('clienteSugerencias');
+  box.innerHTML = '';
+  if (!q || q.length < 1) { box.style.display = 'none'; return; }
+  const matches = CLIENTES.filter(c => c.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
+  if (!matches.length) { box.style.display = 'none'; return; }
+  matches.forEach(c => {
+    const d = document.createElement('div');
+    d.textContent = c;
+    d.onclick = () => {
+      document.getElementById('fCliente').value = c;
+      box.innerHTML = '';
+      box.style.display = 'none';
+    };
+    box.appendChild(d);
+  });
+  box.style.display = 'block';
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#fCliente') && !e.target.closest('#clienteSugerencias')) {
+    document.getElementById('clienteSugerencias').style.display = 'none';
+  }
+});
+
+// ── Búsqueda de productos ───────────────────────────────────────────
+function filtrarProductos(q) {
+  const box = document.getElementById('productosResultados');
+  const items = box.querySelectorAll('.result-item');
+  if (!q) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  items.forEach(item => {
+    const txt = (item.dataset.nombre + ' ' + item.dataset.sku).toLowerCase();
+    item.style.display = txt.includes(q.toLowerCase()) ? '' : 'none';
+  });
+}
+
+function agregarProducto(sku, nombre, precio) {
+  // Evitar duplicados
+  if (PRODUCTOS_SELECCIONADOS.find(p => p.nombre === nombre)) return;
+  PRODUCTOS_SELECCIONADOS.push({ sku, nombre, precio });
+  renderProductosTags();
+  actualizarDescripcion();
+  document.getElementById('buscarProducto').value = '';
+  document.getElementById('productosResultados').style.display = 'none';
+}
+
+function quitarProducto(idx) {
+  PRODUCTOS_SELECCIONADOS.splice(idx, 1);
+  renderProductosTags();
+  actualizarDescripcion();
+}
+
+function renderProductosTags() {
+  const container = document.getElementById('productosSeleccionados');
+  container.innerHTML = '';
+  if (!PRODUCTOS_SELECCIONADOS.length) {
+    container.innerHTML = '<span class="text-muted small">Sin productos seleccionados.</span>';
+    return;
+  }
+  PRODUCTOS_SELECCIONADOS.forEach((p, i) => {
+    const span = document.createElement('span');
+    span.className = 'badge bg-primary fs-6 d-inline-flex align-items-center gap-1';
+    span.innerHTML = `📦 ${esc(p.nombre)} <span class="text-warning">Bs ${p.precio.toFixed(2)}</span>
+      <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.6em;"
+        onclick="quitarProducto(${i})"></button>`;
+    container.appendChild(span);
+  });
+}
+
+function actualizarDescripcion() {
+  if (!PRODUCTOS_SELECCIONADOS.length) return;
+  const desc = 'Instalación: ' + PRODUCTOS_SELECCIONADOS.map(p => p.nombre).join(' + ');
+  document.getElementById('fDescripcion').value = desc;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Editar registro ─────────────────────────────────────────────────
 function editar(id, fecha, cliente, tecnicos, descripcion, monto, gastos, notas) {
   document.getElementById('registroId').value = id;
   document.getElementById('fFecha').value = fecha;
@@ -193,17 +332,22 @@ function editar(id, fecha, cliente, tecnicos, descripcion, monto, gastos, notas)
   document.getElementById('formTitle').textContent = 'Editar registro';
   document.getElementById('btnGuardar').textContent = 'Guardar cambios';
   document.getElementById('btnCancelar').classList.remove('d-none');
-  window.scrollTo(0,0);
+  window.scrollTo(0, 0);
 }
+
 function resetForm() {
   document.getElementById('regForm').reset();
   document.getElementById('registroId').value = 0;
   document.getElementById('fFecha').valueAsDate = new Date();
+  PRODUCTOS_SELECCIONADOS.length = 0;
+  renderProductosTags();
   document.getElementById('formTitle').textContent = 'Registrar trabajo pasado';
   document.getElementById('btnGuardar').textContent = '+ Registrar trabajo';
   document.getElementById('btnCancelar').classList.add('d-none');
 }
-function filtrar() {
+
+// ── Filtrar tabla ───────────────────────────────────────────────────
+function filtrarTabla() {
   const q = document.getElementById('buscador').value.toLowerCase();
   document.querySelectorAll('#tablaReg tbody tr').forEach(tr => {
     tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';

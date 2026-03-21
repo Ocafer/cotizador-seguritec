@@ -2125,12 +2125,15 @@ def instalaciones_pasadas_get(request: Request, msg: str = "", msg_type: str = "
     registros = load_instalaciones_manuales()
     total_cobrado = sum(r.monto_cobrado for r in registros)
     total_gastos = sum(r.gastos for r in registros)
+    productos = db_fetchall("SELECT sku, nombre, unidad, precio_bs FROM products WHERE activo=1 ORDER BY categoria, nombre")
     return templates.TemplateResponse("instalaciones_pasadas.html", {
         "request": request, "empresa": EMPRESA_NOMBRE,
         "registros": registros, "msg": msg, "msg_type": msg_type,
         "total_cobrado": total_cobrado, "total_gastos": total_gastos,
         "utilidad_total": total_cobrado - total_gastos,
         "tecnicos_activos": load_tecnicos_activos(),
+        "clientes": load_all_clientes(),
+        "productos": [dict(p) for p in productos],
     })
 
 @app.post("/instalaciones-pasadas/guardar")
