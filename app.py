@@ -736,6 +736,7 @@ def crear_cotizacion(
     delivery_time: str = Form(...),
     validity_days: int = Form(...),
     notes: str = Form(""),
+    fecha_cotizacion: str = Form(""),
     item_sku: List[str] = Form([]),
     item_name: List[str] = Form([]),
     item_unit: List[str] = Form([]),
@@ -769,7 +770,13 @@ def crear_cotizacion(
     qno = next_quote_no()
 
     if IS_POSTGRES:
-        created_at = datetime.now()
+        if fecha_cotizacion:
+            try:
+                created_at = datetime.strptime(fecha_cotizacion, "%Y-%m-%d")
+            except ValueError:
+                created_at = datetime.now()
+        else:
+            created_at = datetime.now()
         con = db_connect()
         try:
             cur = con.cursor()
@@ -789,7 +796,13 @@ def crear_cotizacion(
         finally:
             con.close()
     else:
-        created_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+        if fecha_cotizacion:
+            try:
+                created_at = datetime.strptime(fecha_cotizacion, "%Y-%m-%d").strftime("%Y-%m-%d %H:%M")
+            except ValueError:
+                created_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+        else:
+            created_at = datetime.now().strftime("%Y-%m-%d %H:%M")
         con = db_connect()
         try:
             cur = con.cursor()
@@ -1435,6 +1448,31 @@ def init_instalaciones_table():
                 created_at TIMESTAMP NOT NULL DEFAULT NOW()
             )
         """)
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS clientes (
+                id SERIAL PRIMARY KEY,
+                nombre TEXT NOT NULL,
+                telefono TEXT,
+                direccion TEXT,
+                ci_nit TEXT,
+                tipo TEXT NOT NULL DEFAULT 'residencial',
+                notas TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """)
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS instalaciones_manuales (
+                id SERIAL PRIMARY KEY,
+                fecha_instalacion DATE NOT NULL,
+                cliente_nombre TEXT NOT NULL,
+                tecnicos TEXT NOT NULL,
+                descripcion TEXT NOT NULL,
+                monto_cobrado NUMERIC(12,2) NOT NULL DEFAULT 0,
+                gastos NUMERIC(12,2) NOT NULL DEFAULT 0,
+                notas TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """)
     else:
         db_exec("""
             CREATE TABLE IF NOT EXISTS instalaciones (
@@ -1476,6 +1514,31 @@ def init_instalaciones_table():
                 monto REAL NOT NULL,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (quote_id) REFERENCES quotes(id)
+            )
+        """)
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS clientes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                telefono TEXT,
+                direccion TEXT,
+                ci_nit TEXT,
+                tipo TEXT NOT NULL DEFAULT 'residencial',
+                notas TEXT,
+                created_at TEXT NOT NULL
+            )
+        """)
+        db_exec("""
+            CREATE TABLE IF NOT EXISTS instalaciones_manuales (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fecha_instalacion TEXT NOT NULL,
+                cliente_nombre TEXT NOT NULL,
+                tecnicos TEXT NOT NULL,
+                descripcion TEXT NOT NULL,
+                monto_cobrado REAL NOT NULL DEFAULT 0,
+                gastos REAL NOT NULL DEFAULT 0,
+                notas TEXT,
+                created_at TEXT NOT NULL
             )
         """)
 
@@ -1953,3 +2016,161 @@ def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = 
         "instalaciones": instalaciones,
         "stats": stats,
     })
+
+# =========================
+# Clientes
+# =========================
+@dataclass
+class ClienteRow:
+    id: int
+    nombre: str
+    telefono: str
+    direccion: str
+    ci_nit: str
+    tipo: str
+    notas: str
+
+def load_all_clientes() -> List[ClienteRow]:
+    rows = db_fetchall("SELECT id, nombre, telefono, direccion, ci_nit, tipo, notas FROM clientes ORDER BY nombre")
+    return [ClienteRow(
+        id=int(r["id"]), nombre=str(r["nombre"]),
+        telefono=str(r["telefono"] or ""), direccion=str(r["direccion"] or ""),
+        ci_nit=str(r["ci_nit"] or ""), tipo=str(r["tipo"] or "residencial"),
+        notas=str(r["notas"] or "")
+    ) for r in rows]
+
+@app.get("/clientes", response_class=HTMLResponse)
+def clientes_get(request: Request, msg: str = "", msg_type: str = "success"):
+    gate = require_login(request)
+    if gate: return gate
+    return templates.TemplateResponse("clientes.html", {
+        "request": request, "empresa": EMPRESA_NOMBRE,
+        "clientes": load_all_clientes(), "msg": msg, "msg_type": msg_type,
+    })
+
+@app.post("/clientes/guardar")
+def clientes_guardar(request: Request,
+    cliente_id: int = Form(0),
+    nombre: str = Form(...),
+    telefono: str = Form(""),
+    direccion: str = Form(""),
+    ci_nit: str = Form(""),
+    tipo: str = Form("residencial"),
+    notas: str = Form(""),
+):
+    gate = require_login(request)
+    if gate: return gate
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if cliente_id:
+        if IS_POSTGRES:
+            db_exec("UPDATE clientes SET nombre=%s, telefono=%s, direccion=%s, ci_nit=%s, tipo=%s, notas=%s WHERE id=%s",
+                    (nombre, telefono, direccion, ci_nit, tipo, notas, cliente_id))
+        else:
+            db_exec("UPDATE clientes SET nombre=?, telefono=?, direccion=?, ci_nit=?, tipo=?, notas=? WHERE id=?",
+                    (nombre, telefono, direccion, ci_nit, tipo, notas, cliente_id))
+        msg = "Cliente+actualizado."
+    else:
+        if IS_POSTGRES:
+            db_exec("INSERT INTO clientes(nombre, telefono, direccion, ci_nit, tipo, notas) VALUES(%s,%s,%s,%s,%s,%s)",
+                    (nombre, telefono, direccion, ci_nit, tipo, notas))
+        else:
+            db_exec("INSERT INTO clientes(nombre, telefono, direccion, ci_nit, tipo, notas, created_at) VALUES(?,?,?,?,?,?,?)",
+                    (nombre, telefono, direccion, ci_nit, tipo, notas, now))
+        msg = "Cliente+agregado."
+    return RedirectResponse(url=f"/clientes?msg={msg}&msg_type=success", status_code=303)
+
+@app.post("/clientes/{cliente_id}/borrar")
+def clientes_borrar(request: Request, cliente_id: int):
+    gate = require_login(request)
+    if gate: return gate
+    if IS_POSTGRES:
+        db_exec("DELETE FROM clientes WHERE id=%s", (cliente_id,))
+    else:
+        db_exec("DELETE FROM clientes WHERE id=?", (cliente_id,))
+    return RedirectResponse(url="/clientes?msg=Cliente+eliminado.&msg_type=warning", status_code=303)
+
+
+# =========================
+# Instalaciones Manuales
+# =========================
+@dataclass
+class InstalacionManualRow:
+    id: int
+    fecha_instalacion: str
+    cliente_nombre: str
+    tecnicos: str
+    descripcion: str
+    monto_cobrado: float
+    gastos: float
+    notas: str
+
+    @property
+    def utilidad(self): return self.monto_cobrado - self.gastos
+    @property
+    def margen(self): return (self.utilidad / self.monto_cobrado * 100) if self.monto_cobrado > 0 else 0
+
+def load_instalaciones_manuales() -> List[InstalacionManualRow]:
+    rows = db_fetchall("SELECT id, fecha_instalacion, cliente_nombre, tecnicos, descripcion, monto_cobrado, gastos, notas FROM instalaciones_manuales ORDER BY fecha_instalacion DESC")
+    return [InstalacionManualRow(
+        id=int(r["id"]), fecha_instalacion=str(r["fecha_instalacion"]),
+        cliente_nombre=str(r["cliente_nombre"]), tecnicos=str(r["tecnicos"]),
+        descripcion=str(r["descripcion"]), monto_cobrado=float(r["monto_cobrado"]),
+        gastos=float(r["gastos"]), notas=str(r["notas"] or "")
+    ) for r in rows]
+
+@app.get("/instalaciones-pasadas", response_class=HTMLResponse)
+def instalaciones_pasadas_get(request: Request, msg: str = "", msg_type: str = "success"):
+    gate = require_login(request)
+    if gate: return gate
+    registros = load_instalaciones_manuales()
+    total_cobrado = sum(r.monto_cobrado for r in registros)
+    total_gastos = sum(r.gastos for r in registros)
+    return templates.TemplateResponse("instalaciones_pasadas.html", {
+        "request": request, "empresa": EMPRESA_NOMBRE,
+        "registros": registros, "msg": msg, "msg_type": msg_type,
+        "total_cobrado": total_cobrado, "total_gastos": total_gastos,
+        "utilidad_total": total_cobrado - total_gastos,
+        "tecnicos_activos": load_tecnicos_activos(),
+    })
+
+@app.post("/instalaciones-pasadas/guardar")
+def instalaciones_pasadas_guardar(request: Request,
+    registro_id: int = Form(0),
+    fecha_instalacion: str = Form(...),
+    cliente_nombre: str = Form(...),
+    tecnicos: str = Form(...),
+    descripcion: str = Form(...),
+    monto_cobrado: float = Form(0),
+    gastos: float = Form(0),
+    notas: str = Form(""),
+):
+    gate = require_login(request)
+    if gate: return gate
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if registro_id:
+        if IS_POSTGRES:
+            db_exec("UPDATE instalaciones_manuales SET fecha_instalacion=%s, cliente_nombre=%s, tecnicos=%s, descripcion=%s, monto_cobrado=%s, gastos=%s, notas=%s WHERE id=%s",
+                    (fecha_instalacion, cliente_nombre, tecnicos, descripcion, monto_cobrado, gastos, notas, registro_id))
+        else:
+            db_exec("UPDATE instalaciones_manuales SET fecha_instalacion=?, cliente_nombre=?, tecnicos=?, descripcion=?, monto_cobrado=?, gastos=?, notas=? WHERE id=?",
+                    (fecha_instalacion, cliente_nombre, tecnicos, descripcion, monto_cobrado, gastos, notas, registro_id))
+        msg = "Registro+actualizado."
+    else:
+        if IS_POSTGRES:
+            db_exec("INSERT INTO instalaciones_manuales(fecha_instalacion, cliente_nombre, tecnicos, descripcion, monto_cobrado, gastos, notas) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                    (fecha_instalacion, cliente_nombre, tecnicos, descripcion, monto_cobrado, gastos, notas))
+        else:
+            db_exec("INSERT INTO instalaciones_manuales(fecha_instalacion, cliente_nombre, tecnicos, descripcion, monto_cobrado, gastos, notas, created_at) VALUES(?,?,?,?,?,?,?,?)",
+                    (fecha_instalacion, cliente_nombre, tecnicos, descripcion, monto_cobrado, gastos, notas, now))
+        msg = "Registro+guardado."
+    return RedirectResponse(url=f"/instalaciones-pasadas?msg={msg}&msg_type=success", status_code=303)
+
+@app.post("/instalaciones-pasadas/{registro_id}/borrar")
+def instalaciones_pasadas_borrar(request: Request, registro_id: int):
+    gate = require_login(request)
+    if gate: return gate
+    if IS_POSTGRES:
+        db_exec("DELETE FROM instalaciones_manuales WHERE id=%s", (registro_id,))
+    else:
+        db_exec("DELETE FROM instalaciones_manuales WHERE id=?", (registro_id,))
+    return RedirectResponse(url="/instalaciones-pasadas?msg=Registro+eliminado.&msg_type=warning", status_code=303)

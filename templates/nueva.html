@@ -30,6 +30,8 @@
         <a class="btn btn-outline-primary btn-sm" href="/productos">Productos</a>
         <a class="btn btn-outline-success btn-sm" href="/agenda">Agenda</a>
         <a class="btn btn-outline-secondary btn-sm" href="/tecnicos">Técnicos</a>
+        <a class="btn btn-outline-dark btn-sm" href="/clientes">Clientes</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/instalaciones-pasadas">Trabajos</a>
         <a class="btn btn-outline-info btn-sm" href="/reportes">Reportes</a>
         <a class="btn btn-outline-danger btn-sm" href="/logout">Salir</a>
       </div>
@@ -43,15 +45,19 @@
       <div class="card mb-3">
         <div class="card-body">
           <div class="row g-2">
-            <div class="col-12 col-md-6">
+            <div class="col-12 col-md-5">
               <label class="form-label">Nombre del cliente</label>
               <input class="form-control" name="client_name" required placeholder="Ej. Juan Pérez">
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label">Fecha cotización</label>
+              <input class="form-control" type="date" name="fecha_cotizacion" id="fechaCotizacion">
             </div>
             <div class="col-6 col-md-3">
               <label class="form-label">Tiempo de entrega</label>
               <input class="form-control" name="delivery_time" required placeholder="Ej. 2 días hábiles">
             </div>
-            <div class="col-6 col-md-3">
+            <div class="col-6 col-md-2">
               <label class="form-label">Validez (días)</label>
               <input class="form-control" type="number" name="validity_days" required value="7" min="1">
             </div>
@@ -207,6 +213,11 @@
     results.innerHTML = '';
     searchBox.value = '';
   }
+</script>
+
+<script>
+  // Fecha de hoy por defecto en cotización
+  document.getElementById('fechaCotizacion').valueAsDate = new Date();
 </script>
 </body>
 </html>
