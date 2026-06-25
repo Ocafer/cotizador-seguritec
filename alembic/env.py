@@ -20,6 +20,11 @@ target_metadata = None
 def _get_url() -> str:
     if DATABASE_URL:
         url = DATABASE_URL
+        # SQLAlchemy needs the psycopg3 driver prefix; the project uses psycopg[binary] not psycopg2
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+psycopg://", 1)
         if "sslmode=" not in url:
             sep = "&" if "?" in url else "?"
             url += f"{sep}sslmode=require"
