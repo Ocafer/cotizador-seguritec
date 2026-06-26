@@ -7,11 +7,12 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
-from config import EMPRESA_NOMBRE, EMPRESA_TELF, IVA_RATE, LOGO_PATH
+from config import EMPRESA_NOMBRE as _DEF_EMPRESA, EMPRESA_TELF as _DEF_TELF, IVA_RATE as _DEF_IVA, LOGO_PATH
+from settings import get_setting
 
 
-def money(x: float) -> str:
-    return f"Bs {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+def money(x: float, simbolo: str = "Bs") -> str:
+    return f"{simbolo} {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def generate_pdf(
@@ -23,6 +24,11 @@ def generate_pdf(
     items: List[dict],
     notes: Optional[str] = None,
 ) -> bytes:
+    empresa = get_setting("empresa_nombre", _DEF_EMPRESA)
+    telf = get_setting("empresa_telf", _DEF_TELF)
+    iva_rate = float(get_setting("iva_rate", str(_DEF_IVA)))
+    moneda = get_setting("moneda_simbolo", "Bs")
+
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     width, height = A4
@@ -43,10 +49,10 @@ def generate_pdf(
             pass
 
     c.setFont("Helvetica-Bold", 15)
-    c.drawString(x0, y, EMPRESA_NOMBRE)
+    c.drawString(x0, y, empresa)
     y -= 7 * mm
     c.setFont("Helvetica", 10)
-    c.drawString(x0, y, f"Telf.: {EMPRESA_TELF}")
+    c.drawString(x0, y, f"Telf.: {telf}")
     y -= 7 * mm
 
     c.setLineWidth(0.8)
@@ -104,21 +110,21 @@ def generate_pdf(
     c.line(x0, y, width - x0, y)
     y -= 8 * mm
 
-    iva = subtotal * IVA_RATE
+    iva = subtotal * iva_rate
     total = subtotal + iva
 
     c.setFont("Helvetica-Bold", 10)
     c.drawRightString(x0 + 140 * mm, y, "Subtotal (Sin IVA):")
-    c.drawRightString(width - x0, y, money(subtotal))
+    c.drawRightString(width - x0, y, money(subtotal, moneda))
     y -= 6 * mm
 
-    c.drawRightString(x0 + 140 * mm, y, f"IVA ({int(IVA_RATE * 100)}%):")
-    c.drawRightString(width - x0, y, money(iva))
+    c.drawRightString(x0 + 140 * mm, y, f"IVA ({int(iva_rate * 100)}%):")
+    c.drawRightString(width - x0, y, money(iva, moneda))
     y -= 6 * mm
 
     c.setFont("Helvetica-Bold", 11)
     c.drawRightString(x0 + 140 * mm, y, "Total (Con IVA):")
-    c.drawRightString(width - x0, y, money(total))
+    c.drawRightString(width - x0, y, money(total, moneda))
     y -= 10 * mm
 
     if notes:
@@ -131,7 +137,7 @@ def generate_pdf(
             y -= 5 * mm
 
     c.setFont("Helvetica", 8)
-    c.drawString(x0, 12 * mm, f"{EMPRESA_NOMBRE} - Cotización generada automáticamente")
+    c.drawString(x0, 12 * mm, f"{empresa} - Cotización generada automáticamente")
     c.showPage()
     c.save()
     return buf.getvalue()

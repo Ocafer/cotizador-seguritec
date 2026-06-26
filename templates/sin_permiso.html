@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="es">
 <head>
+  <script>(function(){var t=localStorage.getItem('sg-theme')||'light';document.documentElement.setAttribute('data-bs-theme',t)})();</script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sin permiso</title>
@@ -12,7 +13,12 @@
     <h4 class="mt-2 mb-1">Sin permiso</h4>
     <p class="text-muted mb-4">Tu usuario no tiene acceso a esta sección.</p>
     <a href="/dashboard" class="btn btn-primary me-2">Dashboard</a>
-    <button onclick="history.back()" class="btn btn-outline-secondary">← Atrás</button>
+    <button onclick="history.back()" class="btn btn-outline-secondary me-2">← Atrás</button>
+    <button onclick="toggleTheme()" class="btn btn-outline-secondary" id="btnTheme">🌙</button>
   </div>
+<script>
+function toggleTheme(){var el=document.documentElement,t=el.getAttribute('data-bs-theme')==='dark'?'light':'dark';el.setAttribute('data-bs-theme',t);localStorage.setItem('sg-theme',t);var b=document.getElementById('btnTheme');if(b)b.textContent=t==='dark'?'☀️':'🌙';}
+(function(){var b=document.getElementById('btnTheme');if(b)b.textContent=document.documentElement.getAttribute('data-bs-theme')==='dark'?'☀️':'🌙';})();
+</script>
 </body>
 </html>

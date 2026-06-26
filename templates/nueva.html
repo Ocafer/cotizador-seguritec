@@ -1,6 +1,7 @@
 <!doctype html>
 <html>
 <head>
+  <script>(function(){var t=localStorage.getItem('sg-theme')||'light';document.documentElement.setAttribute('data-bs-theme',t)})();</script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Nueva cotización</title>
@@ -34,6 +35,7 @@
         <a class="btn btn-outline-dark btn-sm" href="/clientes">Clientes</a>
         <a class="btn btn-outline-secondary btn-sm" href="/instalaciones-pasadas">Trabajos</a>
         <a class="btn btn-outline-info btn-sm" href="/reportes">Reportes</a>
+        <button onclick="toggleTheme()" class="btn btn-outline-secondary btn-sm" id="btnTheme">🌙</button>
         <a class="btn btn-outline-danger btn-sm" href="/logout">Salir</a>
       </div>
     </div>
@@ -131,6 +133,7 @@
   }
 
   const IVA_RATE = {{ iva_rate }};
+  const MONEDA = "{{ moneda }}";
 
   function recalcularTotal() {
     let subtotal = 0;
@@ -139,14 +142,14 @@
       const price = parseFloat(tr.querySelector('input[name="item_unit_price"]')?.value || 0);
       const linea = qty * price;
       const cell = tr.querySelector('.row-total');
-      if (cell) cell.textContent = 'Bs ' + linea.toFixed(2);
+      if (cell) cell.textContent = MONEDA + ' ' + linea.toFixed(2);
       subtotal += linea;
     });
     const iva = subtotal * IVA_RATE;
     const total = subtotal + iva;
-    document.getElementById('subtotalDisplay').textContent = 'Bs ' + subtotal.toFixed(2);
-    document.getElementById('ivaDisplay').textContent = 'Bs ' + iva.toFixed(2);
-    document.getElementById('totalDisplay').textContent = 'Bs ' + total.toFixed(2);
+    document.getElementById('subtotalDisplay').textContent = MONEDA + ' ' + subtotal.toFixed(2);
+    document.getElementById('ivaDisplay').textContent = MONEDA + ' ' + iva.toFixed(2);
+    document.getElementById('totalDisplay').textContent = MONEDA + ' ' + total.toFixed(2);
   }
 
   function addRowFromProduct(p) {
@@ -160,7 +163,7 @@
         <td><input class="form-control form-control-sm" name="item_unit" value="${escapeHtml(p.unit || 'unidad')}"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_qty" value="1" min="0"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_unit_price" value="${p.price}" min="0"></td>
-        <td class="text-end row-total text-nowrap fw-bold">Bs ${p.price.toFixed(2)}</td>
+        <td class="text-end row-total text-nowrap fw-bold">${MONEDA} ${p.price.toFixed(2)}</td>
         <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">X</button></td>
       </tr>
     `;
@@ -258,6 +261,9 @@
 <script>
   // Fecha de hoy por defecto en cotización
   document.getElementById('fechaCotizacion').valueAsDate = new Date();
+
+  function toggleTheme(){var el=document.documentElement,t=el.getAttribute('data-bs-theme')==='dark'?'light':'dark';el.setAttribute('data-bs-theme',t);localStorage.setItem('sg-theme',t);var b=document.getElementById('btnTheme');if(b)b.textContent=t==='dark'?'☀️':'🌙';}
+  (function(){var b=document.getElementById('btnTheme');if(b)b.textContent=document.documentElement.getAttribute('data-bs-theme')==='dark'?'☀️':'🌙';})();
 </script>
 </body>
 </html>

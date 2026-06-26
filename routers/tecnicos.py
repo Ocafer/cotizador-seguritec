@@ -4,7 +4,6 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from auth import require_roles
-from config import EMPRESA_NOMBRE
 from database import db_exec, psql
 from services import load_all_tecnicos
 from templating import render
@@ -18,7 +17,7 @@ def tecnicos_get(request: Request):
     if gate:
         return gate
     return render(request, "tecnicos.html", {
-        "request": request, "empresa": EMPRESA_NOMBRE,
+        "request": request,
         "tecnicos": load_all_tecnicos(),
         "msg": request.query_params.get("msg", ""),
         "msg_type": request.query_params.get("msg_type", "success"),

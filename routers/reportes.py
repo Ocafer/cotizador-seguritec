@@ -5,8 +5,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from auth import require_roles
-from config import EMPRESA_NOMBRE, IVA_RATE
 from database import db_fetchall, psql
+from settings import get_setting
 from templating import render
 
 router = APIRouter()
@@ -17,6 +17,8 @@ def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = 
     gate = require_roles(request, "admin", "ventas", "contador")
     if gate:
         return gate
+
+    iva_rate = float(get_setting("iva_rate", "0.13"))
 
     hoy = datetime.now().strftime("%Y-%m-%d")
     desde = desde or datetime.now().strftime("%Y-%m-01")
@@ -72,7 +74,6 @@ def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = 
     margen_global = (utilidad_global / total_con_iva * 100) if total_con_iva > 0 else 0
 
     return render(request, "reportes.html", {
-        "request": request, "empresa": EMPRESA_NOMBRE,
         "desde": desde, "hasta": hasta, "tecnico_filtro": tecnico,
         "tecnicos": tecnicos, "instalaciones": instalaciones,
         "stats": {

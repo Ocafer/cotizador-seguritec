@@ -9,7 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
 
 from config import APP_TITLE, SESSION_SECRET, STATIC_DIR
-from schema import seed_products_from_excel_if_empty, seed_admin_user
+from schema import seed_products_from_excel_if_empty, seed_admin_user, seed_configuracion
 from templating import templates
 
 from auth import router as auth_router
@@ -21,6 +21,7 @@ from routers.gastos import router as gastos_router
 from routers.reportes import router as rep_router
 from routers.clientes import router as cli_router
 from routers.usuarios import router as usr_router
+from routers.configuracion import router as cfg_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +59,7 @@ app.include_router(gastos_router)
 app.include_router(rep_router)
 app.include_router(cli_router)
 app.include_router(usr_router)
+app.include_router(cfg_router)
 
 # Run pending migrations at startup (creates tables on first deploy, applies changes on updates)
 from alembic.config import Config as AlembicConfig
@@ -66,4 +68,5 @@ _alembic_cfg = AlembicConfig(os.path.join(os.path.dirname(__file__), "alembic.in
 alembic_command.upgrade(_alembic_cfg, "head")
 
 seed_admin_user()
+seed_configuracion()
 seed_products_from_excel_if_empty()

@@ -5,7 +5,6 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from auth import require_roles
-from config import EMPRESA_NOMBRE
 from database import db_exec, db_fetchone, db_fetchall, db_insert, psql
 from templating import render
 
@@ -21,7 +20,6 @@ def usuarios_get(request: Request):
         return gate
     rows = db_fetchall("SELECT id, username, rol, activo FROM usuarios ORDER BY username")
     return render(request, "usuarios.html", {
-        "empresa": EMPRESA_NOMBRE,
         "usuarios": [dict(r) for r in rows],
         "roles": ROLES_VALIDOS,
         "msg": request.query_params.get("msg", ""),
@@ -74,7 +72,9 @@ def usuarios_guardar(
         )
         msg = "Usuario+creado."
 
-    return RedirectResponse(url=f"/usuarios?msg={msg}&msg_type=success", status_code=303)
+    next_url = request.query_params.get("next", "/usuarios")
+    sep = "&" if "?" in next_url else "?"
+    return RedirectResponse(url=f"{next_url}{sep}msg={msg}&msg_type=success", status_code=303)
 
 
 @router.post("/usuarios/{usuario_id}/borrar")
@@ -84,7 +84,9 @@ def usuarios_borrar(request: Request, usuario_id: int):
         return gate
     yo = request.session.get("username")
     row = db_fetchone(psql("SELECT username FROM usuarios WHERE id=?"), (usuario_id,))
+    next_url = request.query_params.get("next", "/usuarios")
+    sep = "&" if "?" in next_url else "?"
     if row and row["username"] == yo:
-        return RedirectResponse(url="/usuarios?msg=No+podés+eliminarte+a+vos+mismo.&msg_type=danger", status_code=303)
+        return RedirectResponse(url=f"{next_url}{sep}msg=No+podés+eliminarte+a+vos+mismo.&msg_type=danger", status_code=303)
     db_exec(psql("DELETE FROM usuarios WHERE id=?"), (usuario_id,))
-    return RedirectResponse(url="/usuarios?msg=Usuario+eliminado.&msg_type=warning", status_code=303)
+    return RedirectResponse(url=f"{next_url}{sep}msg=Usuario+eliminado.&msg_type=warning", status_code=303)

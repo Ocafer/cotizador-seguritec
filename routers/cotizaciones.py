@@ -8,8 +8,8 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from auth import is_logged_in, require_roles
-from config import EMPRESA_NOMBRE, EMPRESA_TELF, IVA_RATE
 from database import db_connect, db_fetchone, db_fetchall, db_insert, db_exec, IS_POSTGRES, psql
+from settings import get_setting
 from pdf import generate_pdf
 from schema import next_quote_no
 from services import load_products
@@ -30,6 +30,8 @@ def dashboard(request: Request):
     gate = require_roles(request, "admin", "ventas", "contador")
     if gate:
         return gate
+
+    iva_rate = float(get_setting("iva_rate", "0.13"))
 
     hoy = datetime.now()
     hoy_str = hoy.strftime("%Y-%m-%d")
@@ -116,7 +118,6 @@ def dashboard(request: Request):
                      "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
     return render(request, "dashboard.html", {
-        "request": request, "empresa": EMPRESA_NOMBRE,
         "hoy": hoy.strftime("%d/%m/%Y"), "mes_nombre": meses_nombres[hoy.month - 1],
         "stats": {
             "pendientes": pendientes, "en_curso": en_curso,
@@ -136,10 +137,7 @@ def nueva(request: Request):
     gate = require_roles(request, "admin", "ventas")
     if gate:
         return gate
-    return render(request, "nueva.html", {
-        "request": request, "products": load_products(),
-        "empresa": EMPRESA_NOMBRE, "telf": EMPRESA_TELF, "iva_rate": IVA_RATE,
-    })
+    return render(request, "nueva.html", {"products": load_products()})
 
 
 @router.post("/crear")
@@ -210,9 +208,7 @@ def historial(request: Request):
     rows = db_fetchall(
         "SELECT id,quote_no,created_at,client_name,delivery_time,validity_days,notes FROM quotes ORDER BY id DESC LIMIT 500"
     )
-    return render(request, "historial.html", {
-        "request": request, "quotes": rows, "empresa": EMPRESA_NOMBRE,
-    })
+    return render(request, "historial.html", {"quotes": rows})
 
 
 @router.get("/cotizacion/{quote_id}/pdf")
@@ -256,9 +252,7 @@ def editar_get(request: Request, quote_id: int):
         (quote_id,),
     )
     return render(request, "editar.html", {
-        "request": request, "q": q, "items": items_rows,
-        "products": load_products(), "empresa": EMPRESA_NOMBRE,
-        "telf": EMPRESA_TELF, "iva_rate": IVA_RATE,
+        "q": q, "items": items_rows, "products": load_products(),
     })
 
 

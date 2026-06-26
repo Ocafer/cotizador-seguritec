@@ -4,7 +4,6 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from auth import require_roles
-from config import EMPRESA_NOMBRE
 from database import db_exec, db_fetchone, psql
 from services import get_gastos, get_quote_total
 from templating import render
@@ -33,7 +32,7 @@ def gastos_get(request: Request, quote_id: int):
         desglose[g.categoria] = desglose.get(g.categoria, 0) + g.monto
 
     return render(request, "gastos.html", {
-        "request": request, "empresa": EMPRESA_NOMBRE,
+        "request": request,
         "q": dict(q), "gastos": gastos,
         "total_cotizacion": total_cotizacion,
         "total_gastos": total_gastos,

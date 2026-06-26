@@ -7,7 +7,7 @@ from openpyxl import load_workbook
 
 import bcrypt
 
-from config import EXCEL_PATH, ADMIN_USER, ADMIN_PASS
+from config import EXCEL_PATH, ADMIN_USER, ADMIN_PASS, EMPRESA_NOMBRE, EMPRESA_TELF, IVA_RATE
 from database import db_connect, db_exec, db_fetchone, db_insert, IS_POSTGRES, psql
 from models import Product
 
@@ -118,6 +118,21 @@ def seed_products_from_excel_if_empty() -> None:
             con.commit()
         finally:
             con.close()
+
+
+def seed_configuracion() -> None:
+    from settings import get_setting, set_setting
+    defaults = [
+        ("empresa_nombre", EMPRESA_NOMBRE),
+        ("empresa_telf", EMPRESA_TELF),
+        ("iva_rate", str(IVA_RATE)),
+        ("moneda_simbolo", "Bs"),
+        ("empresa_email", ""),
+        ("empresa_direccion", ""),
+    ]
+    for key, val in defaults:
+        if not get_setting(key):
+            set_setting(key, val)
 
 
 def seed_admin_user() -> None:

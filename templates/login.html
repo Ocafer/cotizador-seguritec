@@ -1,6 +1,7 @@
 <!doctype html>
 <html>
 <head>
+  <script>(function(){var t=localStorage.getItem('sg-theme')||'light';document.documentElement.setAttribute('data-bs-theme',t)})();</script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Login</title>
@@ -32,9 +33,14 @@
             <input class="form-control" name="password" type="password" required>
           </div>
           <button class="btn btn-dark w-100" type="submit">Entrar</button>
+          <button type="button" class="btn btn-outline-secondary w-100 mt-2" onclick="toggleTheme()" id="btnTheme">🌙 Cambiar tema</button>
         </form>
       </div>
     </div>
   </div>
+<script>
+function toggleTheme(){var el=document.documentElement,t=el.getAttribute('data-bs-theme')==='dark'?'light':'dark';el.setAttribute('data-bs-theme',t);localStorage.setItem('sg-theme',t);var b=document.getElementById('btnTheme');if(b)b.textContent=t==='dark'?'☀️ Cambiar tema':'🌙 Cambiar tema';}
+(function(){var b=document.getElementById('btnTheme');if(b)b.textContent=document.documentElement.getAttribute('data-bs-theme')==='dark'?'☀️ Cambiar tema':'🌙 Cambiar tema';})();
+</script>
 </body>
 </html>

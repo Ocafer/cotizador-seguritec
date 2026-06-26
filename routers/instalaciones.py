@@ -5,7 +5,6 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from auth import require_roles
-from config import EMPRESA_NOMBRE
 from database import db_connect, db_exec, db_fetchone, db_fetchall, db_insert, psql
 from services import get_quote_total, load_tecnicos_activos, load_instalaciones_manuales, load_all_clientes
 from templating import render
@@ -39,7 +38,6 @@ def agendar_get(request: Request, quote_id: int):
 
     return render(request, "agendar.html", {
         "request": request, "q": q, "instalacion": inst,
-        "empresa": EMPRESA_NOMBRE,
         "tecnicos_activos": load_tecnicos_activos(),
         "tecnicos_asignados_json": json.dumps(tecnicos_asignados),
     })
@@ -129,7 +127,7 @@ def agenda(request: Request, fecha: str = ""):
     proximas = enrich(rows_proximas)
 
     return render(request, "agenda.html", {
-        "request": request, "empresa": EMPRESA_NOMBRE,
+        "request": request,
         "fecha_sel": fecha_sel,
         "instalaciones_dia": instalaciones_dia,
         "proximas": proximas,
@@ -153,7 +151,7 @@ def instalaciones_pasadas_get(request: Request):
         "SELECT sku,nombre,unidad,precio_bs FROM products WHERE activo=1 ORDER BY categoria,nombre"
     )
     return render(request, "instalaciones_pasadas.html", {
-        "request": request, "empresa": EMPRESA_NOMBRE,
+        "request": request,
         "registros": registros,
         "msg": request.query_params.get("msg", ""),
         "msg_type": request.query_params.get("msg_type", "success"),
