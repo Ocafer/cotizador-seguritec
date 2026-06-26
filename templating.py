@@ -6,6 +6,18 @@ from config import TEMPLATES_DIR, EMPRESA_NOMBRE, EMPRESA_TELF, IVA_RATE
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 
+def _money(value, decimals=2):
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    formatted = f"{v:,.{decimals}f}"
+    return formatted.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+templates.env.filters["money"] = _money
+
+
 def render(request: Request, template: str, context: dict | None = None):
     from settings import get_setting
     ctx = {

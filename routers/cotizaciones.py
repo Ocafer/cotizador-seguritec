@@ -179,7 +179,9 @@ def crear_cotizacion(
 
     qno = next_quote_no()
     # PostgreSQL accepts a datetime object; SQLite stores it as TEXT string
-    created_at = datetime.now() if IS_POSTGRES else datetime.now().strftime("%Y-%m-%d %H:%M")
+    _bol = dt.timezone(dt.timedelta(hours=-4))
+    _now = datetime.now(_bol).replace(tzinfo=None)
+    created_at = _now if IS_POSTGRES else _now.strftime("%Y-%m-%d %H:%M")
     if fecha_cotizacion:
         try:
             parsed = datetime.strptime(fecha_cotizacion, "%Y-%m-%d")
@@ -226,7 +228,15 @@ def cotizacion_pdf(request: Request, quote_id: int):
     )
     items = [{"sku": r["sku"] or "", "name": r["name"], "unit": r["unit"],
               "qty": float(r["qty"]), "unit_price": float(r["unit_price"])} for r in items_rows]
-    created_at = q["created_at"].strftime("%Y-%m-%d %H:%M") if hasattr(q["created_at"], "strftime") else str(q["created_at"])
+    ca = q["created_at"]
+    if hasattr(ca, "strftime"):
+        created_at = ca.strftime("%d/%m/%Y")
+    else:
+        s = str(ca)[:10]
+        try:
+            created_at = datetime.strptime(s, "%Y-%m-%d").strftime("%d/%m/%Y")
+        except ValueError:
+            created_at = s
 
     pdf_bytes = generate_pdf(
         quote_no=int(q["quote_no"]), created_at=created_at,

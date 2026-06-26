@@ -106,7 +106,7 @@
       <div class="col-md-4">
         <div class="card bg-success text-white text-center">
           <div class="card-body py-3">
-            <div class="fs-4 fw-bold">Bs {{ "%.2f"|format(stats.total_sin_iva) }}</div>
+            <div class="fs-4 fw-bold">Bs {{ stats.total_sin_iva|money }}</div>
             <div class="small">Total sin IVA</div>
           </div>
         </div>
@@ -114,7 +114,7 @@
       <div class="col-md-4">
         <div class="card bg-secondary text-white text-center">
           <div class="card-body py-3">
-            <div class="fs-4 fw-bold">Bs {{ "%.2f"|format(stats.total_iva) }}</div>
+            <div class="fs-4 fw-bold">Bs {{ stats.total_iva|money }}</div>
             <div class="small">IVA (13%)</div>
           </div>
         </div>
@@ -122,7 +122,7 @@
       <div class="col-md-4">
         <div class="card bg-dark text-white text-center">
           <div class="card-body py-3">
-            <div class="fs-4 fw-bold">Bs {{ "%.2f"|format(stats.total_con_iva) }}</div>
+            <div class="fs-4 fw-bold">Bs {{ stats.total_con_iva|money }}</div>
             <div class="small">Total con IVA</div>
           </div>
         </div>
@@ -135,16 +135,16 @@
       <div class="row g-0">
         <div class="col-6 col-md-3 border-end border-bottom p-3 text-center">
           <div class="text-muted small">Ingresos (c/IVA)</div>
-          <div class="fs-5 fw-bold text-success">Bs {{ "%.2f"|format(stats.total_con_iva) }}</div>
+          <div class="fs-5 fw-bold text-success">Bs {{ stats.total_con_iva|money }}</div>
         </div>
         <div class="col-6 col-md-3 border-end border-bottom p-3 text-center">
           <div class="text-muted small">Total Gastos</div>
-          <div class="fs-5 fw-bold text-danger">Bs {{ "%.2f"|format(stats.total_gastos) }}</div>
+          <div class="fs-5 fw-bold text-danger">Bs {{ stats.total_gastos|money }}</div>
         </div>
         <div class="col-6 col-md-3 border-end p-3 text-center">
           <div class="text-muted small">Utilidad Neta</div>
           <div class="fs-5 fw-bold {% if stats.utilidad >= 0 %}text-success{% else %}text-danger{% endif %}">
-            Bs {{ "%.2f"|format(stats.utilidad) }}
+            Bs {{ stats.utilidad|money }}
           </div>
         </div>
         <div class="col-6 col-md-3 p-3 text-center">
@@ -191,12 +191,12 @@
                   <span class="badge bg-success">✅ Completada</span>
                 {% endif %}
               </td>
-              <td class="text-end">Bs {{ "%.2f"|format(row.total_con_iva) }}</td>
+              <td class="text-end">Bs {{ row.total_con_iva|money }}</td>
               <td class="text-end text-danger">
-                {% if row.total_gastos > 0 %}Bs {{ "%.2f"|format(row.total_gastos) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                {% if row.total_gastos > 0 %}Bs {{ row.total_gastos|money }}{% else %}<span class="text-muted">—</span>{% endif %}
               </td>
               <td class="text-end fw-bold {% if row.utilidad >= 0 %}text-success{% else %}text-danger{% endif %}">
-                {% if row.total_gastos > 0 %}Bs {{ "%.2f"|format(row.utilidad) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                {% if row.total_gastos > 0 %}Bs {{ row.utilidad|money }}{% else %}<span class="text-muted">—</span>{% endif %}
               </td>
               <td class="text-end {% if row.margen >= 0 %}text-success{% else %}text-danger{% endif %}">
                 {% if row.total_gastos > 0 %}{{ "%.1f"|format(row.margen) }}%{% else %}<span class="text-muted">—</span>{% endif %}

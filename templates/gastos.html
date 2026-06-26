@@ -37,7 +37,7 @@
           </div>
           <div class="col-6 text-end">
             <div class="text-muted small">Ingreso (con IVA)</div>
-            <strong class="text-success fs-5">Bs {{ "%.2f"|format(total_cotizacion) }}</strong>
+            <strong class="text-success fs-5">Bs {{ total_cotizacion|money }}</strong>
           </div>
         </div>
       </div>
@@ -56,20 +56,20 @@
       <div class="col-6 col-md-3">
         <div class="card text-center p-2 border-success">
           <div class="small text-muted">Ingreso</div>
-          <div class="fw-bold text-success">Bs {{ "%.2f"|format(total_cotizacion) }}</div>
+          <div class="fw-bold text-success">Bs {{ total_cotizacion|money }}</div>
         </div>
       </div>
       <div class="col-6 col-md-3">
         <div class="card text-center p-2 border-danger">
           <div class="small text-muted">Total Gastos</div>
-          <div class="fw-bold text-danger">Bs {{ "%.2f"|format(total_gastos) }}</div>
+          <div class="fw-bold text-danger">Bs {{ total_gastos|money }}</div>
         </div>
       </div>
       <div class="col-6 col-md-3">
         <div class="card text-center p-2 {% if utilidad >= 0 %}border-success{% else %}border-danger{% endif %}">
           <div class="small text-muted">Utilidad</div>
           <div class="fw-bold {% if utilidad >= 0 %}text-success{% else %}text-danger{% endif %}">
-            Bs {{ "%.2f"|format(utilidad) }}
+            Bs {{ utilidad|money }}
           </div>
         </div>
       </div>
@@ -144,7 +144,7 @@
                 {{ g.categoria }}
               </td>
               <td>{{ g.descripcion }}</td>
-              <td class="text-end text-danger fw-bold">Bs {{ "%.2f"|format(g.monto) }}</td>
+              <td class="text-end text-danger fw-bold">Bs {{ g.monto|money }}</td>
               <td class="text-end">
                 <form method="post" action="/gastos/{{ g.id }}/borrar" style="display:inline"
                       onsubmit="return confirm('¿Eliminar este gasto?');">
@@ -159,7 +159,7 @@
             {% if gastos %}
             <tr class="table-light fw-bold">
               <td colspan="2" class="text-end">Total gastos:</td>
-              <td class="text-end text-danger">Bs {{ "%.2f"|format(total_gastos) }}</td>
+              <td class="text-end text-danger">Bs {{ total_gastos|money }}</td>
               <td></td>
             </tr>
             {% endif %}
@@ -176,7 +176,7 @@
         {% for cat, monto in desglose.items() %}
         <div class="d-flex justify-content-between border-bottom py-1">
           <span>{{ cat }}</span>
-          <span class="text-danger">Bs {{ "%.2f"|format(monto) }}</span>
+          <span class="text-danger">Bs {{ monto|money }}</span>
         </div>
         {% endfor %}
       </div>

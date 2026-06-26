@@ -81,12 +81,12 @@
       <div class="col-md-4">
         <p class="section-title">Ventas del mes</p>
         <div class="card stat-card bg-success text-white p-3 mb-3">
-          <div class="num" style="font-size:1.8rem;">Bs {{ "%.0f"|format(stats.ventas_mes_con_iva) }}</div>
+          <div class="num" style="font-size:1.8rem;">Bs {{ stats.ventas_mes_con_iva|money(0) }}</div>
           <div class="label">Total con IVA — {{ mes_nombre }}</div>
         </div>
         <div class="card stat-card p-3 mb-3">
           <div class="text-muted small">Sin IVA</div>
-          <div class="fw-bold">Bs {{ "%.2f"|format(stats.ventas_mes_sin_iva) }}</div>
+          <div class="fw-bold">Bs {{ stats.ventas_mes_sin_iva|money }}</div>
         </div>
         <div class="card stat-card p-3">
           <div class="text-muted small">Cotizaciones este mes</div>

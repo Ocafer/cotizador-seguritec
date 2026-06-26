@@ -133,6 +133,12 @@
   const IVA_RATE = {{ iva_rate }};
   const MONEDA = "{{ moneda }}";
 
+  function formatMoney(n) {
+    var p = n.toFixed(2).split('.');
+    p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return p[0] + ',' + p[1];
+  }
+
   function recalcularTotal() {
     let subtotal = 0;
     document.querySelectorAll('#itemsBody tr').forEach(tr => {
@@ -140,14 +146,14 @@
       const price = parseFloat(tr.querySelector('input[name="item_unit_price"]')?.value || 0);
       const linea = qty * price;
       const cell = tr.querySelector('.row-total');
-      if (cell) cell.textContent = MONEDA + ' ' + linea.toFixed(2);
+      if (cell) cell.textContent = MONEDA + ' ' + formatMoney(linea);
       subtotal += linea;
     });
     const iva = subtotal * IVA_RATE;
     const total = subtotal + iva;
-    document.getElementById('subtotalDisplay').textContent = MONEDA + ' ' + subtotal.toFixed(2);
-    document.getElementById('ivaDisplay').textContent = MONEDA + ' ' + iva.toFixed(2);
-    document.getElementById('totalDisplay').textContent = MONEDA + ' ' + total.toFixed(2);
+    document.getElementById('subtotalDisplay').textContent = MONEDA + ' ' + formatMoney(subtotal);
+    document.getElementById('ivaDisplay').textContent = MONEDA + ' ' + formatMoney(iva);
+    document.getElementById('totalDisplay').textContent = MONEDA + ' ' + formatMoney(total);
   }
 
   function addRowFromProduct(p) {
@@ -161,7 +167,7 @@
         <td><input class="form-control form-control-sm" name="item_unit" value="${escapeHtml(p.unit || 'unidad')}"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_qty" value="1" min="0"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_unit_price" value="${p.price}" min="0"></td>
-        <td class="text-end row-total text-nowrap fw-bold">${MONEDA} ${p.price.toFixed(2)}</td>
+        <td class="text-end row-total text-nowrap fw-bold">${MONEDA} ${formatMoney(p.price)}</td>
         <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">X</button></td>
       </tr>
     `;

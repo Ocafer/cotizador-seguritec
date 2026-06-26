@@ -15,6 +15,22 @@ def money(x: float, simbolo: str = "Bs") -> str:
     return f"{simbolo} {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def wrap_text(c, text: str, max_width: float, font_name: str = "Helvetica", font_size: float = 10) -> list:
+    words = text.split()
+    lines, current = [], ""
+    for word in words:
+        test = (current + " " + word).strip()
+        if c.stringWidth(test, font_name, font_size) <= max_width:
+            current = test
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines or [text]
+
+
 def generate_pdf(
     quote_no: int,
     created_at: str,
@@ -94,17 +110,20 @@ def generate_pdf(
         line_total = qty * unit_price
         subtotal += line_total
 
-        shown = name if len(name) <= 52 else name[:49] + "..."
-        c.drawString(x0, y, f"{shown} ({unit})")
-        c.drawRightString(x0 + 105 * mm, y, f"{qty:g}")
-        c.drawRightString(x0 + 140 * mm, y, money(unit_price))
-        c.drawRightString(width - x0, y, money(line_total))
-        y -= 6 * mm
-
-        if y < 30 * mm:
-            c.showPage()
-            y = height - 18 * mm
-            c.setFont("Helvetica", 10)
+        label = f"{name} ({unit})"
+        col_w = 88 * mm
+        text_lines = wrap_text(c, label, col_w)
+        for idx, ln in enumerate(text_lines):
+            c.drawString(x0, y, ln)
+            if idx == 0:
+                c.drawRightString(x0 + 105 * mm, y, f"{qty:g}")
+                c.drawRightString(x0 + 140 * mm, y, money(unit_price))
+                c.drawRightString(width - x0, y, money(line_total))
+            y -= 6 * mm
+            if y < 30 * mm:
+                c.showPage()
+                y = height - 18 * mm
+                c.setFont("Helvetica", 10)
 
     y -= 2 * mm
     c.line(x0, y, width - x0, y)
