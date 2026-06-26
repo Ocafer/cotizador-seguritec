@@ -71,13 +71,14 @@
         </div>
         <div class="card-body p-2">
           <div class="table-responsive">
-            <table class="table table-sm align-middle">
+            <table class="table table-sm align-middle" id="itemsTable">
               <thead>
                 <tr>
                   <th style="min-width:260px;">Producto</th>
                   <th>Unidad</th>
                   <th>Cant.</th>
                   <th>P. Unit (Bs)</th>
+                  <th class="text-end">Subtotal</th>
                   <th></th>
                 </tr>
               </thead>
@@ -93,11 +94,19 @@
                   <td><input class="form-control form-control-sm" name="item_unit" value="{{ it['unit'] }}"></td>
                   <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_qty" value="{{ it['qty'] }}" min="0"></td>
                   <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_unit_price" value="{{ it['unit_price'] }}" min="0"></td>
+                  <td class="text-end row-total text-nowrap fw-bold"></td>
                   <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">X</button></td>
                 </tr>
                 {% endfor %}
               </tbody>
             </table>
+          </div>
+          <div class="d-flex justify-content-end mt-2 border-top pt-2">
+            <div class="text-end">
+              <div class="text-muted small">Subtotal sin IVA: <strong id="subtotalDisplay">Bs 0,00</strong></div>
+              <div class="text-muted small">IVA ({{ (iva_rate * 100)|int }}%): <strong id="ivaDisplay">Bs 0,00</strong></div>
+              <div class="fs-5 fw-bold mt-1">Total con IVA: <span id="totalDisplay" class="text-success">Bs 0,00</span></div>
+            </div>
           </div>
         </div>
       </div>
@@ -107,6 +116,32 @@
   </div>
 
 <script>
+  const IVA_RATE = {{ iva_rate }};
+  const MONEDA = "{{ moneda }}";
+
+  function formatMoney(n) {
+    var p = n.toFixed(2).split('.');
+    p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return p[0] + ',' + p[1];
+  }
+
+  function recalcularTotal() {
+    let subtotal = 0;
+    document.querySelectorAll('#itemsBody tr').forEach(tr => {
+      const qty = parseFloat(tr.querySelector('input[name="item_qty"]')?.value || 0);
+      const price = parseFloat(tr.querySelector('input[name="item_unit_price"]')?.value || 0);
+      const linea = qty * price;
+      const cell = tr.querySelector('.row-total');
+      if (cell) cell.textContent = MONEDA + ' ' + formatMoney(linea);
+      subtotal += linea;
+    });
+    const iva = subtotal * IVA_RATE;
+    const total = subtotal + iva;
+    document.getElementById('subtotalDisplay').textContent = MONEDA + ' ' + formatMoney(subtotal);
+    document.getElementById('ivaDisplay').textContent = MONEDA + ' ' + formatMoney(iva);
+    document.getElementById('totalDisplay').textContent = MONEDA + ' ' + formatMoney(total);
+  }
+
   const products = [
     {% for p in products %}
       { sku: "{{p.sku|e}}", cat: "{{p.categoria|e}}", name: "{{p.nombre|e}}", unit: "{{p.unidad|e}}", price: {{p.precio_bs}} },
@@ -128,10 +163,12 @@
         <td><input class="form-control form-control-sm" name="item_unit" value="${escapeHtml(p.unit || 'unidad')}"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_qty" value="1" min="0"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_unit_price" value="${p.price}" min="0"></td>
+        <td class="text-end row-total text-nowrap fw-bold">${MONEDA} ${formatMoney(p.price)}</td>
         <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">X</button></td>
       </tr>
     `;
     document.getElementById('itemsBody').insertAdjacentHTML('beforeend', html);
+    recalcularTotal();
   }
 
   function addManualRow() {
@@ -145,10 +182,12 @@
         <td><input class="form-control form-control-sm" name="item_unit" value="unidad"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_qty" value="1" min="0"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_unit_price" value="0" min="0"></td>
+        <td class="text-end row-total text-nowrap fw-bold">${MONEDA} 0,00</td>
         <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">X</button></td>
       </tr>
     `;
     document.getElementById('itemsBody').insertAdjacentHTML('beforeend', html);
+    recalcularTotal();
   }
 
   function syncManualName(inp) {
@@ -156,7 +195,7 @@
     tr.querySelector('input[name="item_name"]').value = inp.value.trim();
   }
 
-  function removeRow(btn) { btn.closest('tr').remove(); }
+  function removeRow(btn) { btn.closest('tr').remove(); recalcularTotal(); }
 
   const searchBox = document.getElementById("searchBox");
   const results = document.getElementById("results");
@@ -189,6 +228,13 @@
     renderResults(filtered);
   });
 
+  document.getElementById('itemsTable').addEventListener('input', e => {
+    if (e.target.name === 'item_qty' || e.target.name === 'item_unit_price') {
+      recalcularTotal();
+    }
+  });
+
+  recalcularTotal();
 </script>
 </body>
 </html>
