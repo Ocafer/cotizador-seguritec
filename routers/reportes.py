@@ -7,7 +7,6 @@ from fastapi.responses import HTMLResponse
 from auth import require_login
 from config import EMPRESA_NOMBRE, IVA_RATE
 from database import db_fetchall, psql
-from services import get_quote_total, get_total_gastos
 from templating import templates
 
 router = APIRouter()
@@ -31,12 +30,29 @@ def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = 
     tecnicos_rows = db_fetchall("SELECT DISTINCT tecnico FROM instalaciones ORDER BY tecnico")
     tecnicos = [r["tecnico"] for r in tecnicos_rows]
 
+    filtered = [r for r in rows if not tecnico or r["tecnico"] == tecnico]
+
+    # Bulk-fetch totals and gastos (2 queries instead of 2×N)
+    totales: dict = {}
+    gastos_map: dict = {}
+    if filtered:
+        ids = list({int(r["quote_id"]) for r in filtered})
+        ph = ",".join("?" * len(ids))
+        for row in db_fetchall(
+            psql(f"SELECT quote_id, COALESCE(SUM(qty*unit_price), 0) AS subtotal FROM quote_items WHERE quote_id IN ({ph}) GROUP BY quote_id"),
+            tuple(ids),
+        ):
+            totales[int(row["quote_id"])] = float(row["subtotal"] or 0) * (1 + IVA_RATE)
+        for row in db_fetchall(
+            psql(f"SELECT quote_id, COALESCE(SUM(monto), 0) AS total FROM gastos_trabajo WHERE quote_id IN ({ph}) GROUP BY quote_id"),
+            tuple(ids),
+        ):
+            gastos_map[int(row["quote_id"])] = float(row["total"] or 0)
+
     instalaciones = []
-    for r in rows:
-        if tecnico and r["tecnico"] != tecnico:
-            continue
-        total = get_quote_total(int(r["quote_id"]))
-        total_gastos = get_total_gastos(int(r["quote_id"]))
+    for r in filtered:
+        total = totales.get(int(r["quote_id"]), 0.0)
+        total_gastos = gastos_map.get(int(r["quote_id"]), 0.0)
         utilidad = total - total_gastos
         margen = (utilidad / total * 100) if total > 0 else 0
         instalaciones.append({

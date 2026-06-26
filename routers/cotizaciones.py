@@ -12,7 +12,7 @@ from config import EMPRESA_NOMBRE, EMPRESA_TELF, IVA_RATE
 from database import db_connect, db_fetchone, db_fetchall, db_insert, db_exec, IS_POSTGRES, psql
 from pdf import generate_pdf
 from schema import next_quote_no
-from services import load_products, get_quote_total
+from services import load_products
 from templating import templates
 
 router = APIRouter()
@@ -48,19 +48,23 @@ def dashboard(request: Request):
     en_curso = int(row_inst["en_curso"] or 0) if row_inst else 0
     completadas = int(row_inst["completadas"] or 0) if row_inst else 0
 
-    # Month filter differs: postgres uses date range, sqlite uses substr
+    # One query: count of quotes + SUM of items for the month (no N+1)
     if IS_POSTGRES:
-        rows_mes = db_fetchall(
-            "SELECT id FROM quotes WHERE created_at >= %s AND created_at < %s",
-            (f"{mes_actual}-01",
-             f"{hoy.year}-{hoy.month+1:02d}-01" if hoy.month < 12 else f"{hoy.year+1}-01-01"),
+        next_month = f"{hoy.year}-{hoy.month+1:02d}-01" if hoy.month < 12 else f"{hoy.year+1}-01-01"
+        row_mes = db_fetchone(
+            "SELECT COUNT(DISTINCT q.id) AS cnt, COALESCE(SUM(qi.qty * qi.unit_price), 0) AS subtotal "
+            "FROM quotes q LEFT JOIN quote_items qi ON qi.quote_id = q.id "
+            "WHERE q.created_at >= %s AND q.created_at < %s",
+            (f"{mes_actual}-01", next_month),
         )
     else:
-        rows_mes = db_fetchall(
-            "SELECT id FROM quotes WHERE substr(created_at,1,7) = ?", (mes_actual,)
+        row_mes = db_fetchone(
+            "SELECT COUNT(DISTINCT q.id) AS cnt, COALESCE(SUM(qi.qty * qi.unit_price), 0) AS subtotal "
+            "FROM quotes q LEFT JOIN quote_items qi ON qi.quote_id = q.id "
+            "WHERE substr(q.created_at,1,7) = ?", (mes_actual,)
         )
-
-    ventas_mes = sum(get_quote_total(int(r["id"])) for r in rows_mes)
+    cotizaciones_mes = int(row_mes["cnt"] or 0)
+    ventas_mes = float(row_mes["subtotal"] or 0) * (1 + IVA_RATE)
     ventas_mes_sin_iva = ventas_mes / (1 + IVA_RATE)
 
     fecha_limite = (hoy + dt.timedelta(days=7)).strftime("%Y-%m-%d")
@@ -93,16 +97,20 @@ def dashboard(request: Request):
         if IS_POSTGRES:
             primer_dia = dt.date(d.year, d.month, 1)
             ultimo_dia = dt.date(d.year + 1, 1, 1) if d.month == 12 else dt.date(d.year, d.month + 1, 1)
-            rows_m = db_fetchall(
-                "SELECT id FROM quotes WHERE created_at >= %s AND created_at < %s",
+            row_m = db_fetchone(
+                "SELECT COALESCE(SUM(qi.qty * qi.unit_price), 0) AS subtotal "
+                "FROM quotes q LEFT JOIN quote_items qi ON qi.quote_id = q.id "
+                "WHERE q.created_at >= %s AND q.created_at < %s",
                 (str(primer_dia), str(ultimo_dia)),
             )
         else:
-            rows_m = db_fetchall(
-                "SELECT id FROM quotes WHERE substr(created_at,1,7) = ?", (ym,)
+            row_m = db_fetchone(
+                "SELECT COALESCE(SUM(qi.qty * qi.unit_price), 0) AS subtotal "
+                "FROM quotes q LEFT JOIN quote_items qi ON qi.quote_id = q.id "
+                "WHERE substr(q.created_at,1,7) = ?", (ym,)
             )
         meses_labels.append(label)
-        meses_valores.append(round(sum(get_quote_total(int(r["id"])) for r in rows_m), 2))
+        meses_valores.append(round(float(row_m["subtotal"] or 0) * (1 + IVA_RATE), 2))
 
     meses_nombres = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                      "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
@@ -114,7 +122,7 @@ def dashboard(request: Request):
             "pendientes": pendientes, "en_curso": en_curso,
             "completadas": completadas, "total_instalaciones": total_inst,
             "ventas_mes_con_iva": ventas_mes, "ventas_mes_sin_iva": ventas_mes_sin_iva,
-            "cotizaciones_mes": len(rows_mes),
+            "cotizaciones_mes": cotizaciones_mes,
         },
         "proximas_instalaciones": proximas,
         "cotizaciones_recientes": cotizaciones_recientes,
