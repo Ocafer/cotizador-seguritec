@@ -44,7 +44,7 @@ def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = 
             psql(f"SELECT quote_id, COALESCE(SUM(qty*unit_price), 0) AS subtotal FROM quote_items WHERE quote_id IN ({ph}) GROUP BY quote_id"),
             tuple(ids),
         ):
-            totales[int(row["quote_id"])] = float(row["subtotal"] or 0) * (1 + IVA_RATE)
+            totales[int(row["quote_id"])] = float(row["subtotal"] or 0) * (1 + iva_rate)
         for row in db_fetchall(
             psql(f"SELECT quote_id, COALESCE(SUM(monto), 0) AS total FROM gastos_trabajo WHERE quote_id IN ({ph}) GROUP BY quote_id"),
             tuple(ids),
@@ -67,7 +67,7 @@ def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = 
         })
 
     total_con_iva = sum(i["total_con_iva"] for i in instalaciones)
-    total_sin_iva = total_con_iva / (1 + IVA_RATE)
+    total_sin_iva = total_con_iva / (1 + iva_rate)
     total_iva = total_con_iva - total_sin_iva
     total_gastos_global = sum(i["total_gastos"] for i in instalaciones)
     utilidad_global = total_con_iva - total_gastos_global

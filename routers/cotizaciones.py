@@ -66,8 +66,8 @@ def dashboard(request: Request):
             "WHERE substr(q.created_at,1,7) = ?", (mes_actual,)
         )
     cotizaciones_mes = int(row_mes["cnt"] or 0)
-    ventas_mes = float(row_mes["subtotal"] or 0) * (1 + IVA_RATE)
-    ventas_mes_sin_iva = ventas_mes / (1 + IVA_RATE)
+    ventas_mes = float(row_mes["subtotal"] or 0) * (1 + iva_rate)
+    ventas_mes_sin_iva = ventas_mes / (1 + iva_rate)
 
     fecha_limite = (hoy + dt.timedelta(days=7)).strftime("%Y-%m-%d")
     proximas_rows = db_fetchall(psql("""
@@ -112,7 +112,7 @@ def dashboard(request: Request):
                 "WHERE substr(q.created_at,1,7) = ?", (ym,)
             )
         meses_labels.append(label)
-        meses_valores.append(round(float(row_m["subtotal"] or 0) * (1 + IVA_RATE), 2))
+        meses_valores.append(round(float(row_m["subtotal"] or 0) * (1 + iva_rate), 2))
 
     meses_nombres = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                      "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
