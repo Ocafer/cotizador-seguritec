@@ -1,7 +1,6 @@
 <!doctype html>
 <html>
 <head>
-  <script>(function(){var t=localStorage.getItem('sg-theme')||'light';document.documentElement.setAttribute('data-bs-theme',t)})();</script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gastos del Trabajo</title>
@@ -24,7 +23,6 @@
         <a class="btn btn-outline-primary btn-sm" href="/dashboard">Dashboard</a>
         <a class="btn btn-outline-secondary btn-sm" href="/historial">Historial</a>
         <a class="btn btn-outline-info btn-sm" href="/reportes">Reportes</a>
-        <button onclick="toggleTheme()" class="btn btn-outline-secondary btn-sm" id="btnTheme">🌙</button>
         <a class="btn btn-outline-danger btn-sm" href="/logout">Salir</a>
       </div>
     </div>
@@ -192,8 +190,6 @@
   </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-function toggleTheme(){var el=document.documentElement,t=el.getAttribute('data-bs-theme')==='dark'?'light':'dark';el.setAttribute('data-bs-theme',t);localStorage.setItem('sg-theme',t);var b=document.getElementById('btnTheme');if(b)b.textContent=t==='dark'?'☀️':'🌙';}
-(function(){var b=document.getElementById('btnTheme');if(b)b.textContent=document.documentElement.getAttribute('data-bs-theme')==='dark'?'☀️':'🌙';})();
 </script>
 </body>
 </html>
