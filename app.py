@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 import os
 
 from fastapi import FastAPI, Request
@@ -20,6 +21,13 @@ from routers.gastos import router as gastos_router
 from routers.reportes import router as rep_router
 from routers.clientes import router as cli_router
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title=APP_TITLE)
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
@@ -28,11 +36,13 @@ app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 404:
         return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
+    logger.error("HTTP %s en %s %s", exc.status_code, request.method, request.url.path)
     return templates.TemplateResponse("500.html", {"request": request}, status_code=exc.status_code)
 
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
+    logger.exception("Error no controlado en %s %s", request.method, request.url.path)
     return templates.TemplateResponse("500.html", {"request": request}, status_code=500)
 
 if os.path.isdir(STATIC_DIR):
