@@ -94,11 +94,20 @@
                   <th>Unidad</th>
                   <th>Cant.</th>
                   <th>P. Unit (Bs)</th>
+                  <th class="text-end">Subtotal</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody id="itemsBody"></tbody>
             </table>
+          </div>
+          <!-- Totales -->
+          <div class="d-flex justify-content-end mt-2 border-top pt-2">
+            <div class="text-end">
+              <div class="text-muted small">Subtotal sin IVA: <strong id="subtotalDisplay">Bs 0.00</strong></div>
+              <div class="text-muted small">IVA ({{ (iva_rate * 100)|int }}%): <strong id="ivaDisplay">Bs 0.00</strong></div>
+              <div class="fs-5 fw-bold mt-1">Total con IVA: <span id="totalDisplay" class="text-success">Bs 0.00</span></div>
+            </div>
           </div>
         </div>
       </div>
@@ -121,6 +130,25 @@
     return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
   }
 
+  const IVA_RATE = {{ iva_rate }};
+
+  function recalcularTotal() {
+    let subtotal = 0;
+    document.querySelectorAll('#itemsBody tr').forEach(tr => {
+      const qty = parseFloat(tr.querySelector('input[name="item_qty"]')?.value || 0);
+      const price = parseFloat(tr.querySelector('input[name="item_unit_price"]')?.value || 0);
+      const linea = qty * price;
+      const cell = tr.querySelector('.row-total');
+      if (cell) cell.textContent = 'Bs ' + linea.toFixed(2);
+      subtotal += linea;
+    });
+    const iva = subtotal * IVA_RATE;
+    const total = subtotal + iva;
+    document.getElementById('subtotalDisplay').textContent = 'Bs ' + subtotal.toFixed(2);
+    document.getElementById('ivaDisplay').textContent = 'Bs ' + iva.toFixed(2);
+    document.getElementById('totalDisplay').textContent = 'Bs ' + total.toFixed(2);
+  }
+
   function addRowFromProduct(p) {
     const html = `
       <tr>
@@ -132,10 +160,12 @@
         <td><input class="form-control form-control-sm" name="item_unit" value="${escapeHtml(p.unit || 'unidad')}"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_qty" value="1" min="0"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_unit_price" value="${p.price}" min="0"></td>
+        <td class="text-end row-total text-nowrap fw-bold">Bs ${p.price.toFixed(2)}</td>
         <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">X</button></td>
       </tr>
     `;
     document.getElementById('itemsBody').insertAdjacentHTML('beforeend', html);
+    recalcularTotal();
   }
 
   function addManualRow() {
@@ -149,10 +179,12 @@
         <td><input class="form-control form-control-sm" name="item_unit" value="unidad"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_qty" value="1" min="0"></td>
         <td><input class="form-control form-control-sm" type="number" step="0.01" name="item_unit_price" value="0" min="0"></td>
+        <td class="text-end row-total text-nowrap fw-bold">Bs 0.00</td>
         <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">X</button></td>
       </tr>
     `;
     document.getElementById('itemsBody').insertAdjacentHTML('beforeend', html);
+    recalcularTotal();
   }
 
   function syncManualName(inp) {
@@ -162,7 +194,14 @@
 
   function removeRow(btn) {
     btn.closest('tr').remove();
+    recalcularTotal();
   }
+
+  document.getElementById('itemsTable').addEventListener('input', e => {
+    if (e.target.name === 'item_qty' || e.target.name === 'item_unit_price') {
+      recalcularTotal();
+    }
+  });
 
   const searchBox = document.getElementById("searchBox");
   const results = document.getElementById("results");
