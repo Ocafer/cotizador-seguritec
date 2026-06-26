@@ -3,18 +3,18 @@ from __future__ import annotations
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from auth import require_login
+from auth import require_roles
 from config import EMPRESA_NOMBRE
 from database import db_exec, db_fetchone, psql
 from services import get_gastos, get_quote_total
-from templating import templates
+from templating import render
 
 router = APIRouter()
 
 
 @router.get("/gastos/{quote_id}", response_class=HTMLResponse)
 def gastos_get(request: Request, quote_id: int):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas", "tecnico", "contador")
     if gate:
         return gate
 
@@ -32,7 +32,7 @@ def gastos_get(request: Request, quote_id: int):
     for g in gastos:
         desglose[g.categoria] = desglose.get(g.categoria, 0) + g.monto
 
-    return templates.TemplateResponse("gastos.html", {
+    return render(request, "gastos.html", {
         "request": request, "empresa": EMPRESA_NOMBRE,
         "q": dict(q), "gastos": gastos,
         "total_cotizacion": total_cotizacion,
@@ -53,7 +53,7 @@ def gastos_agregar(
     descripcion: str = Form(...),
     monto: float = Form(...),
 ):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas", "tecnico", "contador")
     if gate:
         return gate
     db_exec(
@@ -65,7 +65,7 @@ def gastos_agregar(
 
 @router.post("/gastos/{gasto_id}/borrar")
 def gastos_borrar(request: Request, gasto_id: int):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas", "tecnico", "contador")
     if gate:
         return gate
     g = db_fetchone(psql("SELECT quote_id FROM gastos_trabajo WHERE id=?"), (gasto_id,))

@@ -4,17 +4,17 @@ from datetime import datetime
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from auth import require_login
+from auth import require_roles
 from config import EMPRESA_NOMBRE, IVA_RATE
 from database import db_fetchall, psql
-from templating import templates
+from templating import render
 
 router = APIRouter()
 
 
 @router.get("/reportes", response_class=HTMLResponse)
 def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = ""):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas", "contador")
     if gate:
         return gate
 
@@ -71,7 +71,7 @@ def reportes(request: Request, desde: str = "", hasta: str = "", tecnico: str = 
     utilidad_global = total_con_iva - total_gastos_global
     margen_global = (utilidad_global / total_con_iva * 100) if total_con_iva > 0 else 0
 
-    return templates.TemplateResponse("reportes.html", {
+    return render(request, "reportes.html", {
         "request": request, "empresa": EMPRESA_NOMBRE,
         "desde": desde, "hasta": hasta, "tecnico_filtro": tecnico,
         "tecnicos": tecnicos, "instalaciones": instalaciones,

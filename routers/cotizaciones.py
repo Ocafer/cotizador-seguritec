@@ -7,13 +7,13 @@ from typing import List
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
-from auth import is_logged_in, require_login
+from auth import is_logged_in, require_roles
 from config import EMPRESA_NOMBRE, EMPRESA_TELF, IVA_RATE
 from database import db_connect, db_fetchone, db_fetchall, db_insert, db_exec, IS_POSTGRES, psql
 from pdf import generate_pdf
 from schema import next_quote_no
 from services import load_products
-from templating import templates
+from templating import render, templates
 
 router = APIRouter()
 
@@ -27,7 +27,7 @@ def home(request: Request):
 
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas", "contador")
     if gate:
         return gate
 
@@ -115,7 +115,7 @@ def dashboard(request: Request):
     meses_nombres = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                      "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
-    return templates.TemplateResponse("dashboard.html", {
+    return render(request, "dashboard.html", {
         "request": request, "empresa": EMPRESA_NOMBRE,
         "hoy": hoy.strftime("%d/%m/%Y"), "mes_nombre": meses_nombres[hoy.month - 1],
         "stats": {
@@ -133,10 +133,10 @@ def dashboard(request: Request):
 
 @router.get("/nueva", response_class=HTMLResponse)
 def nueva(request: Request):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas")
     if gate:
         return gate
-    return templates.TemplateResponse("nueva.html", {
+    return render(request, "nueva.html", {
         "request": request, "products": load_products(),
         "empresa": EMPRESA_NOMBRE, "telf": EMPRESA_TELF, "iva_rate": IVA_RATE,
     })
@@ -156,7 +156,7 @@ def crear_cotizacion(
     item_qty: List[float] = Form([]),
     item_unit_price: List[float] = Form([]),
 ):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas")
     if gate:
         return gate
 
@@ -204,20 +204,20 @@ def crear_cotizacion(
 
 @router.get("/historial", response_class=HTMLResponse)
 def historial(request: Request):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas")
     if gate:
         return gate
     rows = db_fetchall(
         "SELECT id,quote_no,created_at,client_name,delivery_time,validity_days,notes FROM quotes ORDER BY id DESC LIMIT 500"
     )
-    return templates.TemplateResponse("historial.html", {
+    return render(request, "historial.html", {
         "request": request, "quotes": rows, "empresa": EMPRESA_NOMBRE,
     })
 
 
 @router.get("/cotizacion/{quote_id}/pdf")
 def cotizacion_pdf(request: Request, quote_id: int):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas")
     if gate:
         return gate
 
@@ -244,7 +244,7 @@ def cotizacion_pdf(request: Request, quote_id: int):
 
 @router.get("/cotizacion/{quote_id}/editar", response_class=HTMLResponse)
 def editar_get(request: Request, quote_id: int):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas")
     if gate:
         return gate
 
@@ -255,7 +255,7 @@ def editar_get(request: Request, quote_id: int):
         psql("SELECT id,sku,name,unit,qty,unit_price FROM quote_items WHERE quote_id=? ORDER BY id"),
         (quote_id,),
     )
-    return templates.TemplateResponse("editar.html", {
+    return render(request, "editar.html", {
         "request": request, "q": q, "items": items_rows,
         "products": load_products(), "empresa": EMPRESA_NOMBRE,
         "telf": EMPRESA_TELF, "iva_rate": IVA_RATE,
@@ -276,7 +276,7 @@ def editar_post(
     item_qty: List[float] = Form([]),
     item_unit_price: List[float] = Form([]),
 ):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas")
     if gate:
         return gate
 
@@ -321,7 +321,7 @@ def editar_post(
 
 @router.post("/cotizacion/{quote_id}/borrar")
 def borrar(request: Request, quote_id: int):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas")
     if gate:
         return gate
 

@@ -5,8 +5,10 @@ from typing import List
 
 from openpyxl import load_workbook
 
-from config import EXCEL_PATH
-from database import db_connect, db_exec, db_fetchone, IS_POSTGRES, psql
+import bcrypt
+
+from config import EXCEL_PATH, ADMIN_USER, ADMIN_PASS
+from database import db_connect, db_exec, db_fetchone, db_insert, IS_POSTGRES, psql
 from models import Product
 
 
@@ -116,6 +118,16 @@ def seed_products_from_excel_if_empty() -> None:
             con.commit()
         finally:
             con.close()
+
+
+def seed_admin_user() -> None:
+    row = db_fetchone(psql("SELECT id FROM usuarios WHERE username=?"), (ADMIN_USER,))
+    if not row:
+        hashed = bcrypt.hashpw(ADMIN_PASS.encode(), bcrypt.gensalt()).decode()
+        db_insert(
+            "INSERT INTO usuarios(username,password_hash,rol,activo) VALUES(?,?,?,1)",
+            (ADMIN_USER, hashed, "admin"),
+        )
 
 
 def next_quote_no() -> int:

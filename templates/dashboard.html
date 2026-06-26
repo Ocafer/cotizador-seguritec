@@ -28,12 +28,20 @@
         <div class="text-muted small">{{ hoy }}</div>
       </div>
       <div class="d-flex gap-2 flex-wrap justify-content-end">
+        {% if rol in ["admin", "ventas"] %}
         <a class="btn btn-primary btn-sm" href="/nueva">+ Nueva Cotización</a>
         <a class="btn btn-outline-secondary btn-sm" href="/historial">Historial</a>
-        <a class="btn btn-outline-primary btn-sm" href="/productos">Productos</a>
         <a class="btn btn-outline-success btn-sm" href="/agenda">Agenda</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/tecnicos">Técnicos</a>
+        <a class="btn btn-outline-dark btn-sm" href="/clientes">Clientes</a>
+        {% endif %}
+        {% if rol in ["admin", "ventas", "contador"] %}
         <a class="btn btn-outline-info btn-sm" href="/reportes">Reportes</a>
+        {% endif %}
+        {% if rol == "admin" %}
+        <a class="btn btn-outline-primary btn-sm" href="/productos">Productos</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/tecnicos">Técnicos</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/usuarios">Usuarios</a>
+        {% endif %}
         <a class="btn btn-outline-danger btn-sm" href="/logout">Salir</a>
       </div>
     </div>
@@ -168,6 +176,7 @@
     <!-- Accesos rápidos -->
     <p class="section-title">Accesos rápidos</p>
     <div class="row g-2 mb-3">
+      {% if rol in ["admin", "ventas"] %}
       <div class="col-4 col-md-2">
         <a href="/nueva" class="acceso-btn btn btn-outline-primary w-100">
           <span class="icon">📝</span> Nueva Cotización
@@ -184,6 +193,20 @@
         </a>
       </div>
       <div class="col-4 col-md-2">
+        <a href="/clientes" class="acceso-btn btn btn-outline-dark w-100">
+          <span class="icon">👥</span> Clientes
+        </a>
+      </div>
+      {% endif %}
+      {% if rol in ["admin", "ventas", "contador"] %}
+      <div class="col-4 col-md-2">
+        <a href="/reportes" class="acceso-btn btn btn-outline-info w-100">
+          <span class="icon">📊</span> Reportes
+        </a>
+      </div>
+      {% endif %}
+      {% if rol == "admin" %}
+      <div class="col-4 col-md-2">
         <a href="/productos" class="acceso-btn btn btn-outline-primary w-100">
           <span class="icon">📦</span> Productos
         </a>
@@ -194,10 +217,11 @@
         </a>
       </div>
       <div class="col-4 col-md-2">
-        <a href="/reportes" class="acceso-btn btn btn-outline-info w-100">
-          <span class="icon">📊</span> Reportes
+        <a href="/usuarios" class="acceso-btn btn btn-outline-secondary w-100">
+          <span class="icon">🔑</span> Usuarios
         </a>
       </div>
+      {% endif %}
     </div>
 
   </div>

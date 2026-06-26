@@ -3,11 +3,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from auth import require_login
+from auth import require_roles
 from config import EMPRESA_NOMBRE
 from database import db_exec, db_fetchone, psql
 from services import load_all_products
-from templating import templates
+from templating import render
 
 router = APIRouter()
 
@@ -18,10 +18,10 @@ router = APIRouter()
 
 @router.get("/productos", response_class=HTMLResponse)
 def productos_get(request: Request):
-    gate = require_login(request)
+    gate = require_roles(request, "admin")
     if gate:
         return gate
-    return templates.TemplateResponse("productos.html", {
+    return render(request, "productos.html", {
         "request": request, "empresa": EMPRESA_NOMBRE,
         "productos": load_all_products(),
         "msg": request.query_params.get("msg", ""),
@@ -39,7 +39,7 @@ def productos_guardar(
     unidad: str = Form(...),
     precio_bs: float = Form(...),
 ):
-    gate = require_login(request)
+    gate = require_roles(request, "admin")
     if gate:
         return gate
 
@@ -66,7 +66,7 @@ def productos_guardar(
 
 @router.post("/productos/{producto_id}/toggle")
 def productos_toggle(request: Request, producto_id: int):
-    gate = require_login(request)
+    gate = require_roles(request, "admin")
     if gate:
         return gate
     db_exec(psql("UPDATE products SET activo = CASE WHEN activo=1 THEN 0 ELSE 1 END WHERE id=?"), (producto_id,))
@@ -75,7 +75,7 @@ def productos_toggle(request: Request, producto_id: int):
 
 @router.post("/productos/{producto_id}/borrar")
 def productos_borrar(request: Request, producto_id: int):
-    gate = require_login(request)
+    gate = require_roles(request, "admin")
     if gate:
         return gate
     db_exec(psql("DELETE FROM products WHERE id=?"), (producto_id,))
@@ -196,7 +196,7 @@ def _bulk_insert(dataset, label: str, count: int):
 
 @router.get("/admin/cargar-camaras-wifi", response_class=HTMLResponse)
 def cargar_camaras_wifi(request: Request, confirmar: str = ""):
-    gate = require_login(request)
+    gate = require_roles(request, "admin")
     if gate:
         return gate
     if confirmar != "si":
@@ -223,7 +223,7 @@ def cargar_camaras_wifi(request: Request, confirmar: str = ""):
 
 @router.get("/admin/cargar-productos-varios", response_class=HTMLResponse)
 def cargar_productos_varios(request: Request, confirmar: str = ""):
-    gate = require_login(request)
+    gate = require_roles(request, "admin")
     if gate:
         return gate
     if confirmar != "si":

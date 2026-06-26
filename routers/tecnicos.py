@@ -3,21 +3,21 @@ from __future__ import annotations
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from auth import require_login
+from auth import require_roles
 from config import EMPRESA_NOMBRE
 from database import db_exec, psql
 from services import load_all_tecnicos
-from templating import templates
+from templating import render
 
 router = APIRouter()
 
 
 @router.get("/tecnicos", response_class=HTMLResponse)
 def tecnicos_get(request: Request):
-    gate = require_login(request)
+    gate = require_roles(request, "admin")
     if gate:
         return gate
-    return templates.TemplateResponse("tecnicos.html", {
+    return render(request, "tecnicos.html", {
         "request": request, "empresa": EMPRESA_NOMBRE,
         "tecnicos": load_all_tecnicos(),
         "msg": request.query_params.get("msg", ""),
@@ -34,7 +34,7 @@ def tecnicos_guardar(
     especialidad: str = Form(""),
     activo: int = Form(1),
 ):
-    gate = require_login(request)
+    gate = require_roles(request, "admin")
     if gate:
         return gate
 
@@ -60,7 +60,7 @@ def tecnicos_guardar(
 
 @router.post("/tecnicos/{tecnico_id}/borrar")
 def tecnicos_borrar(request: Request, tecnico_id: int):
-    gate = require_login(request)
+    gate = require_roles(request, "admin")
     if gate:
         return gate
     db_exec(psql("DELETE FROM tecnicos WHERE id=?"), (tecnico_id,))

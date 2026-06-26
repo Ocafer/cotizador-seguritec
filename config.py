@@ -1,7 +1,6 @@
 from __future__ import annotations
 import os
 import secrets
-import bcrypt
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,9 +20,7 @@ EXCEL_PATH = os.path.join(DATA_DIR, "precios.xlsx")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 ADMIN_USER = os.environ.get("ADMIN_USER", "seguritec")
-_raw_pass = os.environ.get("ADMIN_PASS", "cambia_esto")
-ADMIN_PASS_HASH = bcrypt.hashpw(_raw_pass.encode(), bcrypt.gensalt())
-del _raw_pass
+ADMIN_PASS = os.environ.get("ADMIN_PASS", "cambia_esto")
 
 SESSION_SECRET = os.environ.get("SESSION_SECRET", secrets.token_urlsafe(32))
 LOGO_PATH = os.environ.get("LOGO_PATH", os.path.join(STATIC_DIR, "logo.png"))

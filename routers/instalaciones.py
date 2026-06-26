@@ -4,11 +4,11 @@ import json
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from auth import require_login
+from auth import require_roles
 from config import EMPRESA_NOMBRE
 from database import db_connect, db_exec, db_fetchone, db_fetchall, db_insert, psql
 from services import get_quote_total, load_tecnicos_activos, load_instalaciones_manuales, load_all_clientes
-from templating import templates
+from templating import render
 
 router = APIRouter()
 
@@ -19,7 +19,7 @@ router = APIRouter()
 
 @router.get("/instalacion/{quote_id}/agendar", response_class=HTMLResponse)
 def agendar_get(request: Request, quote_id: int):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas")
     if gate:
         return gate
 
@@ -37,7 +37,7 @@ def agendar_get(request: Request, quote_id: int):
         )
         tecnicos_asignados = [{"id": r["tecnico_id"], "nombre": r["tecnico_nombre"]} for r in tecs]
 
-    return templates.TemplateResponse("agendar.html", {
+    return render(request, "agendar.html", {
         "request": request, "q": q, "instalacion": inst,
         "empresa": EMPRESA_NOMBRE,
         "tecnicos_activos": load_tecnicos_activos(),
@@ -54,7 +54,7 @@ def agendar_post(
     estado: str = Form("pendiente"),
     notas_instalacion: str = Form(""),
 ):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas")
     if gate:
         return gate
 
@@ -96,7 +96,7 @@ def agendar_post(
 @router.get("/agenda", response_class=HTMLResponse)
 def agenda(request: Request, fecha: str = ""):
     from datetime import datetime
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas", "tecnico")
     if gate:
         return gate
 
@@ -128,7 +128,7 @@ def agenda(request: Request, fecha: str = ""):
     instalaciones_dia = enrich(rows_dia)
     proximas = enrich(rows_proximas)
 
-    return templates.TemplateResponse("agenda.html", {
+    return render(request, "agenda.html", {
         "request": request, "empresa": EMPRESA_NOMBRE,
         "fecha_sel": fecha_sel,
         "instalaciones_dia": instalaciones_dia,
@@ -143,7 +143,7 @@ def agenda(request: Request, fecha: str = ""):
 
 @router.get("/instalaciones-pasadas", response_class=HTMLResponse)
 def instalaciones_pasadas_get(request: Request):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas", "tecnico", "contador")
     if gate:
         return gate
     registros = load_instalaciones_manuales()
@@ -152,7 +152,7 @@ def instalaciones_pasadas_get(request: Request):
     productos = db_fetchall(
         "SELECT sku,nombre,unidad,precio_bs FROM products WHERE activo=1 ORDER BY categoria,nombre"
     )
-    return templates.TemplateResponse("instalaciones_pasadas.html", {
+    return render(request, "instalaciones_pasadas.html", {
         "request": request, "empresa": EMPRESA_NOMBRE,
         "registros": registros,
         "msg": request.query_params.get("msg", ""),
@@ -178,7 +178,7 @@ def instalaciones_pasadas_guardar(
     gastos: float = Form(0),
     notas: str = Form(""),
 ):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas", "tecnico", "contador")
     if gate:
         return gate
 
@@ -200,7 +200,7 @@ def instalaciones_pasadas_guardar(
 
 @router.post("/instalaciones-pasadas/{registro_id}/borrar")
 def instalaciones_pasadas_borrar(request: Request, registro_id: int):
-    gate = require_login(request)
+    gate = require_roles(request, "admin", "ventas")
     if gate:
         return gate
     db_exec(psql("DELETE FROM instalaciones_manuales WHERE id=?"), (registro_id,))
