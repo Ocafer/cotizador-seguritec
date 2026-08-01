@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -30,7 +31,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title=APP_TITLE)
+# Seeds ya corrieron en el primer deploy — Railway debe tener SEEDS_DONE=true
+_SEEDS_DONE = os.environ.get("SEEDS_DONE", "false").lower() == "true"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from alembic.config import Config as AlembicConfig
+    from alembic import command as alembic_command
+
+    try:
+        cfg = AlembicConfig(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+        alembic_command.upgrade(cfg, "head")
+        logger.info("Migraciones aplicadas.")
+    except Exception:
+        logger.exception("Error aplicando migraciones — la app continúa.")
+
+    if not _SEEDS_DONE:
+        for fn in (seed_admin_user, seed_configuracion, seed_products_from_excel_if_empty):
+            try:
+                fn()
+            except Exception:
+                logger.exception("Error en seed %s — se omite.", fn.__name__)
+        logger.info("Seeds completados. Setea SEEDS_DONE=true en Railway para omitirlos en futuros reinicios.")
+    else:
+        logger.info("SEEDS_DONE=true — seeds omitidos.")
+
+    yield
+
+
+app = FastAPI(title=APP_TITLE, lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
 
@@ -47,6 +77,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     logger.exception("Error no controlado en %s %s", request.method, request.url.path)
     return templates.TemplateResponse("500.html", {"request": request}, status_code=500)
 
+
 if os.path.isdir(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -60,13 +91,3 @@ app.include_router(rep_router)
 app.include_router(cli_router)
 app.include_router(usr_router)
 app.include_router(cfg_router)
-
-# Run pending migrations at startup (creates tables on first deploy, applies changes on updates)
-from alembic.config import Config as AlembicConfig
-from alembic import command as alembic_command
-_alembic_cfg = AlembicConfig(os.path.join(os.path.dirname(__file__), "alembic.ini"))
-alembic_command.upgrade(_alembic_cfg, "head")
-
-seed_admin_user()
-seed_configuracion()
-seed_products_from_excel_if_empty()
